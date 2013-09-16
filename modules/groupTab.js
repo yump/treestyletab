@@ -14,7 +14,7 @@
  * The Original Code is the Tree Style Tab.
  *
  * The Initial Developer of the Original Code is YUKI "Piro" Hiroshi.
- * Portions created by the Initial Developer are Copyright (C) 2010-2011
+ * Portions created by the Initial Developer are Copyright (C) 2010-2013
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
@@ -62,6 +62,10 @@ GroupTab.prototype = {
 	{
 		return this.window && this.window.location;
 	},
+	get locationSearch()
+	{
+		return this.location.href.replace(/^[^\?]+/, '');
+	},
 
 	get label()
 	{
@@ -75,18 +79,58 @@ GroupTab.prototype = {
 	{
 		return this.document.getElementById('deck');
 	},
+	get temporaryCheck()
+	{
+		return this.document.getElementById('temporary');
+	},
 
 	get title()
 	{
 		if (this._title === null) {
-			let title = this.location.href.split('?')[1];
-			this._title = (this.location.href.indexOf('?') > -1 && title) ?
+			let locationSearch = this.locationSearch;
+			let title = locationSearch.match(/(?:^|[\?&;])title=([^&;]*)/i);
+			if (title)
+				title = title[1];
+			// for old style URIs
+			if (!title && !/(?:^|[\?&;])temporary=/i.test(locationSearch))
+				title = locationSearch.replace(/^\?/, '');
+			this._title = (title) ?
 							this.trim(decodeURIComponent(title)) :
 							'' ;
 		}
 		return this._title;
 	},
+	set title(aValue) {
+		this._title = aValue;
+		this.document.title = this.label.value = aValue;
+		this.label.setAttribute('tooltiptext', aValue);
+		this.document.documentElement.setAttribute('title', aValue);
+		this._updateURI();
+		return aValue;
+	},
 	_title : null,
+
+	get temporary() {
+		return /(?:^|[\?&;])temporary=(?:1|yes|true)/i.test(this.locationSearch);
+	},
+	set temporary(aValue) {
+		aValue = !!aValue;
+		this._updateURI({ temporary: aValue });
+		this.temporaryCheck.checked = aValue;
+		return aValue;
+	},
+
+	_updateURI : function GT_updateURI(aOptions) {
+		aOptions = aOptions || {};
+		var temporary = this.temporary;
+		if ('temporary' in aOptions)
+			temporary = aOptions.temporary;
+		this.location.replace(
+			this.location.href.split('?')[0] + '?' +
+			'title=' + encodeURIComponent(this.title) + '&' +
+			'temporary=' + temporary
+		);
+	},
 
 	get browser()
 	{
@@ -126,6 +170,8 @@ GroupTab.prototype = {
 			this.editor.value = title;
 		}
 
+		this.temporaryCheck.checked = this.temporary;
+
 		this.window.addEventListener('load', this, false);
 
 		this.window.groupTab = this;
@@ -162,12 +208,9 @@ GroupTab.prototype = {
 
 		var old = this.trim(this.label.value);
 		var value = this.trim(this.editor.value);
-		this.document.title = this.label.value = value;
-		this.label.setAttribute('tooltiptext', value);
-		this.document.documentElement.setAttribute('title', value);
 
 		if (value != old)
-			this.location.replace(this.location.href.split('?')[0]+'?'+encodeURIComponent(value));
+			this.title = value;
 
 		this.editor.blur();
 		this.deck.selectedIndex = 0;

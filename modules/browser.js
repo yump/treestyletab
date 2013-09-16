@@ -18,6 +18,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
+ *                 wanabe <https://github.com/wanabe>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -49,6 +50,7 @@ XPCOMUtils.defineLazyModuleGetter(this, 'FullTooltipManager', 'resource://treest
 XPCOMUtils.defineLazyModuleGetter(this, 'TabbarDNDObserver', 'resource://treestyletab-modules/tabbarDNDObserver.js');
 XPCOMUtils.defineLazyModuleGetter(this, 'TabpanelDNDObserver', 'resource://treestyletab-modules/tabpanelDNDObserver.js');
 XPCOMUtils.defineLazyModuleGetter(this, 'AutoHideBrowser', 'resource://treestyletab-modules/autoHide.js');
+XPCOMUtils.defineLazyModuleGetter(this, 'BrowserUIShowHideObserver', 'resource://treestyletab-modules/browserUIShowHideObserver.js');
 
 XPCOMUtils.defineLazyGetter(this, 'window', function() {
 	Cu.import('resource://treestyletab-modules/lib/namespace.jsm');
@@ -797,6 +799,9 @@ TreeStyleTabBrowser.prototype = {
 			b.mTabBox.insertBefore(placeHolder, toggler.nextSibling);
 		}
 		this.tabStripPlaceHolder = (placeHolder != this.tabStrip) ? placeHolder : null ;
+
+		if (this.tabStripPlaceHolder)
+			this.tabStripPlaceHolderBoxObserver = new BrowserUIShowHideObserver(this, this.tabStripPlaceHolder.parentNode);
 	},
  
 	_initTabbrowserContextMenu : function TSTBrowser_initTabbrowserContextMenu() 
@@ -1078,7 +1083,7 @@ TreeStyleTabBrowser.prototype = {
 			let containerFinder = d.createRange();
 			containerFinder.selectNode(namedNodes.closeAnchor);
 			containerFinder.setEndAfter(namedNodes.close);
-			let container = containerFinder.getCommonAncestor();
+			let container = containerFinder.commonAncestorContainer;
 			while (namedNodes.closeAnchor.parentNode != container)
 			{
 				namedNodes.closeAnchor = namedNodes.closeAnchor.parentNode;
@@ -1804,9 +1809,20 @@ TreeStyleTabBrowser.prototype = {
 
 		var splitter = this.splitter;
 		if (splitter.collapsed || splitter.getAttribute('state') != 'collapsed') {
+			let shouldAutoHideForSingleTab = (
+				// "autohide for single tab" feature is removed on Firefox 23.
+				// https://bugzilla.mozilla.org/show_bug.cgi?id=855370
+				(
+					prefs.getDefaultPref('browser.tabs.autoHide') !== null ||
+					// but "Hide Tab Bar With One Tab" provides it.
+					// https://addons.mozilla.org/firefox/addon/hide-tab-bar-with-one-tab/
+					'hideTabBar' in this.window
+				) &&
+				prefs.getPref('browser.tabs.autoHide')
+			);
 			this._tabStripPlaceHolder.collapsed =
 				splitter.collapsed =
-					(prefs.getPref('browser.tabs.autoHide') && this.getExistingTabsCount() == 1);
+					(shouldAutoHideForSingleTab && this.getExistingTabsCount() == 1);
 		}
 
 		var strip = this.tabStrip;
@@ -1850,8 +1866,8 @@ TreeStyleTabBrowser.prototype = {
 			stripStyle.right = pos != 'right' ? '' :
 							((root.screenX + root.width) - (box.screenX + box.width))+'px';
 
-			stripStyle.width = (tabContainerBox.width = width)+'px';
-			stripStyle.height = (tabContainerBox.height = height)+'px';
+			stripStyle.width = (strip.width = tabContainerBox.width = width)+'px';
+			stripStyle.height = (strip.height = tabContainerBox.height = height)+'px';
 
 			this._updateFloatingTabbarResizer({
 				width      : width,
@@ -2051,6 +2067,11 @@ TreeStyleTabBrowser.prototype = {
 		if (this.tooltipManager) {
 			this.tooltipManager.destroy();
 			delete this.tooltipManager;
+		}
+
+		if (this.tabStripPlaceHolderBoxObserver) {
+			this.tabStripPlaceHolderBoxObserver.destroy();
+			delete this.tabStripPlaceHolderBoxObserver;
 		}
 
 		var w = this.window;
@@ -3082,7 +3103,9 @@ TreeStyleTabBrowser.prototype = {
 
 		var parent = this.getParentTab(aTab);
 		var siblings = this.getSiblingTabs(aTab);
-		var groupTabs = siblings.filter(this.isGroupTab, this);
+		var groupTabs = siblings.filter(function(aTab) {
+			return this.isTemporaryGroupTab(aTab);
+		}, this);
 		var groupTab = (
 				groupTabs.length == 1 &&
 				siblings.length == 1 &&
@@ -3093,7 +3116,7 @@ TreeStyleTabBrowser.prototype = {
 
 		var shouldCloseParentTab = (
 				parent &&
-				this.isGroupTab(parent) &&
+				this.isTemporaryGroupTab(parent) &&
 				this.getDescendantTabs(parent).length == 1
 			);
 		if (shouldCloseParentTab)
@@ -5079,7 +5102,7 @@ TreeStyleTabBrowser.prototype = {
 		// for backward compatibility
 		this.fireDataContainerEvent(this.kEVENT_TYPE_DETACHED.replace(/^nsDOM/, ''), aChild, true, false, data);
 
-		if (this.isGroupTab(parentTab) && !this.hasChildTabs(parentTab)) {
+		if (this.isTemporaryGroupTab(parentTab) && !this.hasChildTabs(parentTab)) {
 			this.window.setTimeout(function(aTabBrowser) {
 				if (parentTab.parentNode)
 					aTabBrowser.removeTab(parentTab, { animate : true });
