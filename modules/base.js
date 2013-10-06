@@ -806,9 +806,13 @@ var TreeStyleTabBase = {
 		return newURI;
 	},
  
-	getGroupTabURI : function TSTBase_getGroupTabURI(aTitle) 
+	getGroupTabURI : function TSTBase_getGroupTabURI(aOptions) 
 	{
-		return 'about:treestyletab-group'+(aTitle === void(0) ? '' : '?'+encodeURIComponent(aTitle) );
+		aOptions = aOptions || {};
+		var parameters = [];
+		parameters.push('title=' + encodeURIComponent(aOptions.title || ''));
+		parameters.push('temporary=' + !!aOptions.temporary);
+		return 'about:treestyletab-group?' + parameters.join('&');
 	},
   
 // xpath 
@@ -2194,6 +2198,14 @@ var TreeStyleTabBase = {
 		return (
 			(aLazyCheck || aTab.linkedBrowser.sessionHistory.count == 1) &&
 			aTab.linkedBrowser.currentURI.spec.indexOf('about:treestyletab-group') == 0
+		);
+	},
+ 
+	isTemporaryGroupTab : function TSTBase_isTemporaryGroupTab(aTab) 
+	{
+		return (
+			this.isGroupTab(aTab, true) &&
+			/.*[\?&;]temporary=(?:1|yes|true)/i.test(aTab.linkedBrowser.currentURI.spec)
 		);
 	},
  

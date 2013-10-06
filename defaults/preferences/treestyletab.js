@@ -396,6 +396,12 @@ pref("extensions.treestyletab.dropLinksOnTab.behavior", 0);
  */
 pref("extensions.treestyletab.openGroupBookmark.behavior", 2304); /* 0 | 256 | 2048 */
 /**
+ * Group tabs opened by this feature will be created with "temporary" state
+ * so they will be closed automatically if they are become needless.
+ * To stay them open, set this to false.
+ */
+pref("extensions.treestyletab.openGroupBookmark.temporaryGroup", true);
+/**
  * How to treat tabs dropped to the Bookmarks menu or Bookmarks toolbar.
  *  0 = Always ask how bookmark the tree.
  *  1 = Bookmark all tabs in the tree of the dragged tab.
@@ -617,6 +623,12 @@ pref("extensions.multipletab.show.multipletab-selection-item-createSubtree", tru
  * the first selected tab becomes the parent.
  */
 pref("extensions.treestyletab.createSubtree.underParent", true);
+/**
+ * Group tabs opened by this feature will be created with "temporary" state
+ * so they will be closed automatically if they are become needless.
+ * To stay them open, set this to false.
+ */
+pref("extensions.treestyletab.createSubtree.underParent.temporaryGroup", true);
 
 /**
  * Size of pinned tabs in the vertical tab bar.
