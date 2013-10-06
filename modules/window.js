@@ -315,7 +315,8 @@ TreeStyleTabWindow.prototype = {
 	
 	preInit : function TSTWindow_preInit() 
 	{
-		if (this.preInitialized) return;
+		if (this.preInitialized)
+			return;
 		this.preInitialized = true;
 
 		var w = this.window;
@@ -345,7 +346,8 @@ TreeStyleTabWindow.prototype = {
 			)
 			return;
 
-		if (this.initialized) return;
+		if (this.initialized)
+			return;
 
 		if (!this.preInitialized) {
 			this.preInit();
@@ -412,7 +414,8 @@ TreeStyleTabWindow.prototype = {
  
 	initTabBrowser : function TSTWindow_initTabBrowser(aTabBrowser) 
 	{
-		if (aTabBrowser.localName != 'tabbrowser') return;
+		if (aTabBrowser.localName != 'tabbrowser')
+			return;
 		(new TreeStyleTabBrowser(this, aTabBrowser)).init();
 	},
  
@@ -432,7 +435,8 @@ TreeStyleTabWindow.prototype = {
  
 	updateAllTabsPopup : function TSTWindow_updateAllTabsPopup(aEvent) 
 	{
-		if (!utils.getTreePref('enableSubtreeIndent.allTabsPopup')) return;
+		if (!utils.getTreePref('enableSubtreeIndent.allTabsPopup'))
+			return;
 
 		var items = Array.slice(aEvent.originalTarget.childNodes);
 		var firstItemIndex = 0;
@@ -540,7 +544,8 @@ TreeStyleTabWindow.prototype = {
 	
 	destroyTabBrowser : function TSTWindow_destroyTabBrowser(aTabBrowser) 
 	{
-		if (aTabBrowser.localName != 'tabbrowser') return;
+		if (aTabBrowser.localName != 'tabbrowser')
+			return;
 		aTabBrowser.treeStyleTab.destroy();
 		delete aTabBrowser.treeStyleTab;
 	},
@@ -644,7 +649,8 @@ TreeStyleTabWindow.prototype = {
 	
 	startListenKeyEventsFor : function TSTWindow_startListenKeyEventsFor(aReason) 
 	{
-		if (this.keyEventListeningFlags & aReason) return;
+		if (this.keyEventListeningFlags & aReason)
+			return;
 		if (!this.keyEventListening) {
 			let w = this.window;
 			w.addEventListener('keydown',  this, true);
@@ -657,7 +663,8 @@ TreeStyleTabWindow.prototype = {
  
 	endListenKeyEventsFor : function TSTWindow_endListenKeyEventsFor(aReason) 
 	{
-		if (!(this.keyEventListeningFlags & aReason)) return;
+		if (!(this.keyEventListeningFlags & aReason))
+			return;
 		this.keyEventListeningFlags ^= aReason;
 		if (!this.keyEventListeningFlags && this.keyEventListening) {
 			let w = this.window;
@@ -715,7 +722,8 @@ TreeStyleTabWindow.prototype = {
 	onKeyRelease : function TSTWindow_onKeyRelease(aEvent) 
 	{
 		var b = this.browser;
-		if (!b || !b.treeStyleTab) return;
+		if (!b || !b.treeStyleTab)
+			return;
 		var sv = b.treeStyleTab;
 
 		var scrollDown,
@@ -927,7 +935,8 @@ TreeStyleTabWindow.prototype = {
 		var hasSubtree = false;
 		for (var i = 0, maxi = aTabs.length; i < maxi; i++)
 		{
-			if (!this.hasChildTabs(aTabs[i])) continue;
+			if (!this.hasChildTabs(aTabs[i]))
+				continue;
 			hasSubtree = true;
 			break;
 		}
@@ -978,7 +987,8 @@ TreeStyleTabWindow.prototype = {
 				for (let i = 0, maxi = previews.length; i < maxi; i++)
 				{
 					let preview = previews[i];
-					if (!preview) continue;
+					if (!preview)
+						continue;
 					let tab = preview.controller.wrappedJSObject.tab;
 					preview.visible = !this.isCollapsed(tab);
 				}
@@ -1175,7 +1185,8 @@ TreeStyleTabWindow.prototype = {
 			let tab = this._restoringTabs[i];
 			try {
 				let b = this.getTabBrowserFromChild(aTab);
-				if (b) b.treeStyleTab.handleRestoredTab(aTab);
+				if (b)
+					b.treeStyleTab.handleRestoredTab(aTab);
 			}
 			catch(e) {
 			}
@@ -1341,31 +1352,53 @@ TreeStyleTabWindow.prototype = {
  
 	createSubtree : function TSTWindow_createSubtree(aTabs) 
 	{
-		aTabs = this.getRootTabs(aTabs);
-		if (!aTabs.length) return;
-
-		var b = this.getTabBrowserFromChild(aTabs[0]);
+		var rootTabs = this.getRootTabs(aTabs);
 
 		var parent = this.getParentTab(aTabs[0]);
-
 		var next = aTabs[0];
 		while (
 			(next = this.getNextSiblingTab(next)) &&
 			aTabs.indexOf(next) > -1
 		);
 
-		var root = utils.getTreePref('createSubtree.underParent') ?
+		var b = this.getTabBrowserFromChild(aTabs[0]);
+
+		rootTabs.forEach(function(aRootTab) {
+			var parentTab = this.getParentTab(aRootTab);
+			var descendantTabs = this.getDescendantTabs(aRootTab);
+			descendantTabs.reverse().forEach(function(aDescendantTab) {
+				var inTargets = aTabs.indexOf(aDescendantTab) > -1;
+				var parentInTargets = aTabs.indexOf(this.getParentTab(aDescendantTab)) > -1;
+				if (inTargets || (inTargets == parentInTargets))
+					return;
+				if (parentTab)
+					b.treeStyleTab.attachTabTo(aDescendantTab, parentTab, {
+						dontExpand   : true,
+						dontMove     : true,
+						insertBefore : this.getNextSiblingTab(aRootTab)
+					});
+				else
+					b.treeStyleTab.detachTab(aDescendantTab);
+			}, this);
+		}, this);
+
+		aTabs = rootTabs;
+
+		var shouldCreateGroup = aTabs.length > 1 && utils.getTreePref('createSubtree.underParent');
+		var root = shouldCreateGroup ?
 					b.addTab(this.getGroupTabURI({
 						temporary: utils.getTreePref('createSubtree.underParent.temporaryGroup')
 					})) :
 					aTabs.shift() ;
 		var self = this;
 		this.Deferred.next(function(self) {
-			for (let i = 0, maxi = aTabs.length; i < maxi; i++)
-			{
-				let tab = aTabs[i];
-				b.treeStyleTab.attachTabTo(tab, root);
-				b.treeStyleTab.collapseExpandTab(tab, false);
+			if (shouldCreateGroup) {
+				for (let i = 0, maxi = aTabs.length; i < maxi; i++)
+				{
+					let tab = aTabs[i];
+					b.treeStyleTab.attachTabTo(tab, root);
+					b.treeStyleTab.collapseExpandTab(tab, false);
+				}
 			}
 			if (parent) {
 				b.treeStyleTab.attachTabTo(root, parent, {
@@ -1381,30 +1414,31 @@ TreeStyleTabWindow.prototype = {
 	
 	canCreateSubtree : function TSTWindow_canCreateSubtree(aTabs) 
 	{
-		aTabs = this.getRootTabs(aTabs);
-		if (aTabs.length < 2) return false;
-
-		var lastParent = this.getParentTab(aTabs[0]);
-		for (let i = 1, maxi = aTabs.length-1; i < maxi; i++)
-		{
-			let parent = this.getParentTab(aTabs[i]);
-			if (!lastParent || parent != lastParent) return true;
-			lastParent = parent;
+		var rootTabs = this.getRootTabs(aTabs);
+		if (rootTabs.length == 1) {
+			let descendants = this.getDescendantTabs(rootTabs[0]);
+			// are they already grouped?
+			// if it is a partial selection, I can create new group.
+			return (descendants.some(function(aDescendantTab) {
+				return aTabs.indexOf(aDescendantTab) < 0;
+			}, this));
 		}
-		return this.getChildTabs(lastParent).length != aTabs.length;
+		return true;
 	},
 	canCreateSubTree : function() { return this.canCreateSubtree.apply(this, arguments); }, // obsolete, for backward compatibility
  
 	getRootTabs : function TSTWindow_getRootTabs(aTabs) 
 	{
 		var roots = [];
-		if (!aTabs || !aTabs.length) return roots;
+		if (!aTabs || !aTabs.length)
+			return roots;
 		aTabs = this.cleanUpTabsArray(aTabs);
 		for (let i = 0, maxi = aTabs.length; i < maxi; i++)
 		{
 			let tab = aTabs[i];
 			let parent = this.getParentTab(tab);
-			if (parent && aTabs.indexOf(parent) > -1) continue;
+			if (parent && aTabs.indexOf(parent) > -1)
+				continue;
 			roots.push(tab);
 		}
 		return roots;
@@ -1425,7 +1459,8 @@ TreeStyleTabWindow.prototype = {
 		var sv = b.treeStyleTab;
 
 		var parent = sv.getParentTab(aTab);
-		if (!parent) return;
+		if (!parent)
+			return;
 
 		var nextSibling = sv.getNextSiblingTab(parent);
 
@@ -1438,7 +1473,8 @@ TreeStyleTabWindow.prototype = {
 		else {
 			sv.detachTab(aTab);
 			let index = nextSibling ? nextSibling._tPos : b.mTabContainer.childNodes.length ;
-			if (index > aTab._tPos) index--;
+			if (index > aTab._tPos)
+				index--;
 			b.moveTabTo(aTab, index);
 		}
 	},
@@ -1465,7 +1501,8 @@ TreeStyleTabWindow.prototype = {
   
 	expandTreeAfterKeyReleased : function TSTWindow_expandTreeAfterKeyReleased(aTab) 
 	{
-		if (utils.getTreePref('autoCollapseExpandSubtreeOnSelect.whileFocusMovingByShortcut')) return;
+		if (utils.getTreePref('autoCollapseExpandSubtreeOnSelect.whileFocusMovingByShortcut'))
+			return;
 		this._tabShouldBeExpandedAfterKeyReleased = aTab || null;
 	},
 	_tabShouldBeExpandedAfterKeyReleased : null,
