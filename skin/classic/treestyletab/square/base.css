@@ -64,7 +64,7 @@
   .tabbrowser-tab:not([selected="true"]) {
 	appearance: none !important;
 	-moz-appearance: none !important;
-	min-height: 2em;
+	min-height: 0em;
 	margin: 0 !important;
 	/*padding: 0 0.2em !important;*/
 	color: -moz-dialogtext;
