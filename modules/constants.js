@@ -18,6 +18,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
+ *                 Tetsuharu OHZEKI <https://github.com/saneyuki>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -96,6 +97,8 @@ const TreeStyleTabConstants = Object.freeze({
 	kTABBAR_MOVE_FORCE  : 'force',
 	kTABBAR_MOVE_NORMAL : 'normal',
 
+	kTAB_STRIP_ELEMENT  : 'treestyletab-tabstrip-element',
+
 /* classes */
 	kTWISTY                     : 'treestyletab-twisty',
 	kCOUNTER                    : 'treestyletab-counter',
@@ -132,8 +135,6 @@ const TreeStyleTabConstants = Object.freeze({
 	kEVENT_TYPE_PRINT_PREVIEW_EXITED         : 'nsDOMTreeStyleTabPrintPreviewExited',
 	kEVENT_TYPE_AUTO_HIDE_STATE_CHANGING     : 'nsDOMTreeStyleTabAutoHideStateChanging',
 	kEVENT_TYPE_AUTO_HIDE_STATE_CHANGE       : 'nsDOMTreeStyleTabAutoHideStateChange',
-	kEVENT_TYPE_BEFORE_TOOLBAR_CUSTOMIZATION : 'nsDOMTreeStyleTabBeforeToolbarCustomization',
-	kEVENT_TYPE_AFTER_TOOLBAR_CUSTOMIZATION  : 'nsDOMTreeStyleTabAfterToolbarCustomization',
 
 	kTOPIC_INDENT_MODIFIED              : 'TreeStyleTab:indentModified',
 	kTOPIC_COLLAPSE_EXPAND_ALL          : 'TreeStyleTab:collapseExpandAllSubtree',

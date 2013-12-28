@@ -18,6 +18,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
+ *                 Tetsuharu OHZEKI <https://github.com/saneyuki>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -41,6 +42,7 @@ const Cu = Components.utils;
 
 Cu.import('resource://gre/modules/XPCOMUtils.jsm');
 Cu.import('resource://gre/modules/Services.jsm');
+Cu.import('resource://gre/modules/Timer.jsm');
 Cu.import('resource://treestyletab-modules/constants.js');
 
 XPCOMUtils.defineLazyGetter(this, 'window', function() {
@@ -50,11 +52,6 @@ XPCOMUtils.defineLazyGetter(this, 'window', function() {
 XPCOMUtils.defineLazyGetter(this, 'prefs', function() {
 	Cu.import('resource://treestyletab-modules/lib/prefs.js');
 	return window['piro.sakura.ne.jp'].prefs;
-});
-XPCOMUtils.defineLazyGetter(this, 'jstimer', function() {
-	var jstimer = {};
-	Cu.import('resource://treestyletab-modules/lib/jstimer.jsm', jstimer);
-	return jstimer;
 });
 XPCOMUtils.defineLazyGetter(this, 'extensions', function() {
 	Cu.import('resource://treestyletab-modules/lib/extensions.js', {});
@@ -80,7 +77,10 @@ XPCOMUtils.defineLazyServiceGetter(this, 'SessionStore',
 
 if (Services.appinfo.OS === 'WINNT') {
 	XPCOMUtils.defineLazyModuleGetter(this, 'AeroPeek',
-	  'resource://gre/modules/WindowsPreviewPerTab.jsm', 'AeroPeek');
+	  'resource:///modules/WindowsPreviewPerTab.jsm', 'AeroPeek');
+}
+else {
+	this.AeroPeek = null;
 }
  
 var TreeStyleTabBase = { 
@@ -111,15 +111,6 @@ var TreeStyleTabBase = {
 	get SessionStore() {
 		return SessionStore;
 	},
-
-	get FocusManager()
-	{
-		if (!this._FocusManager) {
-			this._FocusManager = Cc['@mozilla.org/focus-manager;1'].getService(Ci.nsIFocusManager);
-		}
-		return this._FocusManager;
-	},
-	 _FocusManager : null,
 
 	get extensions() { return extensions; },
 	get animationManager() { return animationManager; },
@@ -227,9 +218,15 @@ var TreeStyleTabBase = {
 			try {
 				let tabModule = Cu.import('resource://scriptish/utils/Scriptish_openInTab.js', {});
 				let Scriptish_openInTab = tabModule.Scriptish_openInTab;
-				tabModule.Scriptish_openInTab = function(aURL, aLoadInBackground, aReuse, aChromeWin) {
-					aChromeWin.TreeStyleTabService.readyToOpenChildTabNow(aChromeWin.gBrowser);
-					return Scriptish_openInTab.apply(this, arguments);
+				tabModule.Scriptish_openInTab = function(aURL, aLoadInBackground, aReuse, aChromeWin, ...aExtraArgs) {
+					try {
+						aChromeWin.TreeStyleTabService.readyToOpenChildTabNow(aChromeWin.gBrowser);
+					}
+					catch(e) {
+						Cu.reportError(e);
+					}
+					var allArgs = [aURL, aLoadInBackground, aReuse, aChromeWin].concat(aExtraArgs);
+					return Scriptish_openInTab.apply(this, allArgs);
 				};
 			}
 			catch(e) {
@@ -510,12 +507,12 @@ var TreeStyleTabBase = {
   
 /* utilities */ 
 	
-	doAndWaitDOMEvent : function TSTBase_doAndWaitDOMEvent() 
+	doAndWaitDOMEvent : function TSTBase_doAndWaitDOMEvent(...aArgs) 
 	{
 		var type, target, delay, task;
-		for (let i = 0, maxi = arguments.length; i < maxi; i++)
+		for (let i = 0, maxi = aArgs.length; i < maxi; i++)
 		{
-			let arg = arguments[i];
+			let arg = aArgs[i];
 			switch(typeof arg)
 			{
 				case 'string':
@@ -544,7 +541,7 @@ var TreeStyleTabBase = {
 
 		var done = false;
 		var listener = function(aEvent) {
-				jstimer.setTimeout(function() {
+				setTimeout(function() {
 					done = true;
 				}, delay || 0);
 				target.removeEventListener(type, listener, false);
@@ -735,12 +732,12 @@ var TreeStyleTabBase = {
 	},
 	
 	// called with target(nsIDOMEventTarget), document(nsIDOMDocument), type(string) and data(object) 
-	fireDataContainerEvent : function TSTBase_fireDataContainerEvent()
+	fireDataContainerEvent : function TSTBase_fireDataContainerEvent(...aArgs)
 	{
 		var target, document, type, data, canBubble, cancellable;
-		for (let i = 0, maxi = arguments.length; i < maxi; i++)
+		for (let i = 0, maxi = aArgs.length; i < maxi; i++)
 		{
-			let arg = arguments[i];
+			let arg = aArgs[i];
 			if (typeof arg == 'boolean') {
 				if (canBubble === void(0))
 					canBubble = arg;
@@ -1581,12 +1578,12 @@ var TreeStyleTabBase = {
 	 * opened or not (by the command called after TST's API), then use this.
 	 * This version automatically cancels the "ready" state with delay.
 	 */
-	readyToOpenChildTabNow : function TSTBase_readyToOpenChildTabNow(aFrameOrTabBrowser, aMultiple) /* PUBLIC API */
+	readyToOpenChildTabNow : function TSTBase_readyToOpenChildTabNow(...aArgs) /* PUBLIC API */
 	{
-		if (this.readyToOpenChildTab.apply(this, arguments)) {
+		if (this.readyToOpenChildTab.apply(this, aArgs)) {
 			let self = this;
 			this.Deferred.next(function() {
-				self.stopToOpenChildTab(aFrameOrTabBrowser);
+				self.stopToOpenChildTab(aArgs[0]);
 			}).error(this.defaultDeferredErrorHandler);
 			return true;
 		}
@@ -1633,12 +1630,12 @@ var TreeStyleTabBase = {
 	 * opened or not (by the command called after TST's API), then use this.
 	 * This version automatically cancels the "ready" state with delay.
 	 */
-	readyToOpenNextSiblingTabNow : function TSTBase_readyToOpenNextSiblingTabNow(aFrameOrTabBrowser) /* PUBLIC API */
+	readyToOpenNextSiblingTabNow : function TSTBase_readyToOpenNextSiblingTabNow(...aArgs) /* PUBLIC API */
 	{
-		if (this.readyToOpenNextSiblingTab.apply(this, arguments)) {
+		if (this.readyToOpenNextSiblingTab.apply(this, aArgs)) {
 			let self = this;
 			this.Deferred.next(function() {
-				self.stopToOpenChildTab(aFrameOrTabBrowser);
+				self.stopToOpenChildTab(aArgs[0]);
 			}).error(this.defaultDeferredErrorHandler);
 			return true;
 		}
@@ -1670,13 +1667,13 @@ var TreeStyleTabBase = {
 	 * opened or not (by the command called after TST's API), then use this.
 	 * This version automatically cancels the "ready" state with delay.
 	 */
-	readyToOpenNewTabGroupNow : function TSTBase_readyToOpenNewTabGroupNow(aFrameOrTabBrowser) /* PUBLIC API */
+	readyToOpenNewTabGroupNow : function TSTBase_readyToOpenNewTabGroupNow(...aArgs) /* PUBLIC API */
 	{
 
-		if (this.readyToOpenNewTabGroup.apply(this, arguments)) {
+		if (this.readyToOpenNewTabGroup.apply(this, aArgs)) {
 			let self = this;
 			this.Deferred.next(function() {
-				self.stopToOpenChildTab(aFrameOrTabBrowser);
+				self.stopToOpenChildTab(aArgs[0]);
 			}).error(this.defaultDeferredErrorHandler);
 			return true;
 		}
@@ -1824,7 +1821,9 @@ var TreeStyleTabBase = {
 			)
 		);
 	},
-	shouldCloseTabSubTreeOf : function TSTBase_shouldCloseTabSubTreeOf() { return this.shouldCloseTabSubtreeOf.apply(this, arguments); }, // obsolete, for backward compatibility
+	shouldCloseTabSubTreeOf : function TSTBase_shouldCloseTabSubTreeOf(...aArgs) {
+		return this.shouldCloseTabSubtreeOf.apply(this, aArgs);
+	}, // obsolete, for backward compatibility
  
 	shouldCloseLastTabSubtreeOf : function TSTBase_shouldCloseLastTabSubtreeOf(aTab) 
 	{
@@ -1835,7 +1834,9 @@ var TreeStyleTabBase = {
 			this.getDescendantTabs(aTab).length + 1 == this.getAllTabs(b).length
 		);
 	},
-	shouldCloseLastTabSubTreeOf : function TSTBase_shouldCloseLastTabSubTreeOf() { return this.shouldCloseLastTabSubtreeOf.apply(this, arguments); }, // obsolete, for backward compatibility
+	shouldCloseLastTabSubTreeOf : function TSTBase_shouldCloseLastTabSubTreeOf(...aArgs) {
+		return this.shouldCloseLastTabSubtreeOf.apply(this, aArgs);
+	}, // obsolete, for backward compatibility
  
 	getParentTab : function TSTBase_getParentTab(aTab) /* PUBLIC API */ 
 	{
@@ -2220,9 +2221,10 @@ var TreeStyleTabBase = {
 			screenY   : tabBox.screenY + yOffset
 		};
 	},
-	getTabActualScreenPosition : function TSTBase_getTabActualScreenPosition(aTab)
+	getTabActualScreenPosition : function TSTBase_getTabActualScreenPosition(aTab, aOrient)
 	{
-		return aTab.parentNode.orient == 'vertical' ?
+		aOrient = aOrient || aTab.parentNode.orient;
+		return aOrient == 'vertical' ?
 				this.getTabActualScreenY(aTab) :
 				this.getTabActualScreenX(aTab) ;
 	},

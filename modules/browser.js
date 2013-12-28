@@ -19,6 +19,7 @@
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
  *                 wanabe <https://github.com/wanabe>
+ *                 Tetsuharu OHZEKI <https://github.com/saneyuki>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -369,6 +370,7 @@ TreeStyleTabBrowser.prototype = {
 						utils.getTreePref('compatibility.TMP') &&
 						d.getAnonymousElementByAttribute(aTab, 'class', 'tab-close-button always-right')
 					) ||
+					d.getAnonymousElementByAttribute(aTab, 'anonid', 'close-button') || // with Australis
 					d.getAnonymousElementByAttribute(aTab, 'class', 'tab-close-button');
 		return close;
 	},
@@ -564,18 +566,17 @@ TreeStyleTabBrowser.prototype = {
 			}
 		}
 	},
-	positionPinnedTabsWithDelay : function TSTBrowser_positionPinnedTabsWithDelay()
+	positionPinnedTabsWithDelay : function TSTBrowser_positionPinnedTabsWithDelay(...aArgs)
 	{
 		if (this.deferredTasks['positionPinnedTabsWithDelay'])
 			return;
 
-		var args = Array.slice(arguments);
 		var lastArgs = this.deferredTasks['positionPinnedTabsWithDelay'] ?
 						this.deferredTasks['positionPinnedTabsWithDelay'].__treestyletab__args :
 						[null, null, false] ;
-		lastArgs[0] = lastArgs[0] || args[0];
-		lastArgs[1] = lastArgs[1] || args[1];
-		lastArgs[2] = lastArgs[2] || args[2];
+		lastArgs[0] = lastArgs[0] || aArgs[0];
+		lastArgs[1] = lastArgs[1] || aArgs[1];
+		lastArgs[2] = lastArgs[2] || aArgs[2];
 
 		var self = this;
 		(this.deferredTasks['positionPinnedTabsWithDelay'] = this.Deferred.wait(0).next(function() {
@@ -678,6 +679,7 @@ TreeStyleTabBrowser.prototype = {
 
 		this.setTabbrowserAttribute(this.kFIXED+'-horizontal', utils.getTreePref('tabbar.fixed.horizontal') ? 'true' : null, b);
 		this.setTabbrowserAttribute(this.kFIXED+'-vertical', utils.getTreePref('tabbar.fixed.vertical') ? 'true' : null, b);
+		this.setTabStripAttribute(this.kTAB_STRIP_ELEMENT, true);
 
 		/**
 		 * <tabbrowser> has its custom background color for itself, but it
@@ -786,6 +788,7 @@ TreeStyleTabBrowser.prototype = {
 		var toggler = d.getAnonymousElementByAttribute(b, 'class', this.kTABBAR_TOGGLER);
 		if (!toggler) {
 			toggler = d.createElement('spacer');
+			toggler.setAttribute(this.kTAB_STRIP_ELEMENT, true);
 			toggler.setAttribute('class', this.kTABBAR_TOGGLER);
 			toggler.setAttribute('layer', true); // https://bugzilla.mozilla.org/show_bug.cgi?id=590468
 			b.mTabBox.insertBefore(toggler, b.mTabBox.firstChild);
@@ -796,6 +799,7 @@ TreeStyleTabBrowser.prototype = {
 		var placeHolder = d.getAnonymousElementByAttribute(b, 'anonid', 'strip');
 		if (!placeHolder) {
 			placeHolder = d.createElement('hbox');
+			placeHolder.setAttribute(this.kTAB_STRIP_ELEMENT, true);
 			placeHolder.setAttribute('anonid', 'strip');
 			placeHolder.setAttribute('class', 'tabbrowser-strip '+this.kTABBAR_PLACEHOLDER);
 			placeHolder.setAttribute('layer', true); // https://bugzilla.mozilla.org/show_bug.cgi?id=590468
@@ -959,7 +963,7 @@ TreeStyleTabBrowser.prototype = {
 		var b = aTab.linkedBrowser;
 		if (!b.__treestyletab__stop) {
 			b.__treestyletab__stop = b.stop;
-			b.stop = function TSTBrowser_stopHook() {
+			b.stop = function TSTBrowser_stopHook(...aArgs) {
 				try {
 					var stack = Components.stack;
 					while (stack)
@@ -975,7 +979,7 @@ TreeStyleTabBrowser.prototype = {
 				catch(e) {
 					dump(e+'\n'+e.stack+'\n');
 				}
-				return this.__treestyletab__stop.apply(this, arguments);
+				return this.__treestyletab__stop.apply(this, aArgs);
 			};
 		}
 
@@ -1568,9 +1572,34 @@ TreeStyleTabBrowser.prototype = {
 		}
 		else {
 			splitter = d.createElement('splitter');
+			splitter.setAttribute(this.kTAB_STRIP_ELEMENT, true);
 			splitter.setAttribute('state', 'open');
 			splitter.setAttribute('layer', true); // https://bugzilla.mozilla.org/show_bug.cgi?id=590468
-			splitter.appendChild(d.createElement('grippy'));
+			let grippy = d.createElement('grippy')
+			grippy.setAttribute(this.kTAB_STRIP_ELEMENT, true);
+			// Workaround for https://github.com/piroor/treestyletab/issues/593
+			// When you click the grippy...
+			//  1. The grippy changes "state" of the splitter from "collapsed"
+			//     to "open".
+			//  2. The splitter changes visibility of the place holder.
+			//  3. BrowserUIShowHideObserver detects the change of place
+			//     holder's visibility and triggers updateFloatingTabbar().
+			//  4. updateFloatingTabbar() copies the visibility of the
+			//     actual tab bar to the place holder. However, the tab bar
+			//     is still collapsed.
+			//  5. As the result, the place holder becomes collapsed and
+			//     the splitter disappear.
+			// So, we have to turn the actual tab bar visible manually
+			// when the grippy is clicked.
+			let tabContainer = this.mTabBrowser.tabContainer;
+			grippy.addEventListener('click', function() {
+				tabContainer.ownerDocument.defaultView.setTimeout(function() {
+					var visible = grippy.getAttribute('state') != 'collapsed';
+					if (visible != tabContainer.visible)
+						tabContainer.visible = visible;
+				}, 0);
+			}, false);
+			splitter.appendChild(grippy);
 		}
 
 		var splitterClass = splitter.getAttribute('class') || '';
@@ -1817,27 +1846,21 @@ TreeStyleTabBrowser.prototype = {
 
 		var d = this.document;
 
+		// When the tab bar is invisible even if the tab bar is resizing, then
+		// now I'm trying to expand the tab bar from collapsed state.
+		// Then the tab bar must be shown.
+		if (aReason & this.kTABBAR_UPDATE_BY_TABBAR_RESIZE &&
+			!this.browser.tabContainer.visible)
+			this.browser.tabContainer.visible = true;
+
 		var splitter = this.splitter;
 		if (splitter.collapsed || splitter.getAttribute('state') != 'collapsed') {
-			let shouldAutoHideForSingleTab = (
-				(
-					// "autohide for single tab" feature is removed on Firefox 23.
-					// https://bugzilla.mozilla.org/show_bug.cgi?id=855370
-					(
-						prefs.getDefaultPref('browser.tabs.autoHide') !== null ||
-						// but "Hide Tab Bar With One Tab" provides it.
-						// https://addons.mozilla.org/firefox/addon/hide-tab-bar-with-one-tab/
-						'hideTabBar' in this.window
-					) &&
-					prefs.getPref('browser.tabs.autoHide')
-				)
-//				) ||
-//				// Tab Mix Plus also provides it.
-//				'TabmixTabbar' in this.window && this.window.TabmixTabbar.hideMode > 0
-			);
+			// Synchronize visibility of the tab bar to the placeholder,
+			// because the tab bar can be shown/hidden by someone
+			// (Tab Mix Plus, Pale Moon, or some addons).
 			this._tabStripPlaceHolder.collapsed =
 				splitter.collapsed =
-					(shouldAutoHideForSingleTab && this.getExistingTabsCount() == 1);
+					!this.browser.tabContainer.visible;
 		}
 
 		var strip = this.tabStrip;
@@ -1859,7 +1882,7 @@ TreeStyleTabBrowser.prototype = {
 				(aReason & this.kTABBAR_UPDATE_SYNC_TO_PLACEHOLDER) &&
 				this.autoHide.mode == this.autoHide.kMODE_SHRINK
 				)
-				this.autoHide.hide(this.autoHide.kSHOWHIDE_BY_RESIZE);
+				this.autoHide.hide(this.autoHide.kSHOWN_BY_ANY_REASON);
 
 			let box  = this._tabStripPlaceHolder.boxObject;
 			let root = d.documentElement.boxObject;
@@ -1967,7 +1990,9 @@ TreeStyleTabBrowser.prototype = {
 		if (!splitter) {
 			let box = d.createElement('box');
 			box.setAttribute('id', 'treestyletab-tabbar-resizer-box');
+			box.setAttribute(this.kTAB_STRIP_ELEMENT, true);
 			splitter = d.createElement('splitter');
+			splitter.setAttribute(this.kTAB_STRIP_ELEMENT, true);
 			splitter.setAttribute('id', 'treestyletab-tabbar-resizer-splitter');
 			splitter.setAttribute('class', this.kSPLITTER);
 			splitter.setAttribute('onmousedown', 'TreeStyleTabService.handleEvent(event);');
@@ -3048,6 +3073,9 @@ TreeStyleTabBrowser.prototype = {
 
 		if (nextFocusedTab && toBeClosedTabs.indexOf(nextFocusedTab) > -1)
 			nextFocusedTab = this.getNextFocusedTab(nextFocusedTab);
+
+		if (nextFocusedTab && nextFocusedTab.hasAttribute(this.kREMOVED))
+			nextFocusedTab = null;
 
 		this._reserveCloseRelatedTabs(toBeClosedTabs);
 
@@ -4815,16 +4843,17 @@ TreeStyleTabBrowser.prototype = {
 	onBeforeFullScreenToggle : function TSTBrowser_onBeforeFullScreenToggle() 
 	{
 		if (this.position != 'top') {
+			var isEnteringFullScreenMode = !this.window.fullScreen;
 			// entering to the DOM-fullscreen (ex. YouTube Player)
-			if (this.document.mozFullScreen) {
+			if (this.document.mozFullScreen && isEnteringFullScreenMode) {
 				this.setTabbrowserAttribute(this.kDOM_FULLSCREEN_ACTIVATED, true);
 			}
 			else {
 				if (this.document.documentElement.getAttribute(this.kDOM_FULLSCREEN_ACTIVATED) != 'true') {
-					if (this.window.fullScreen)
-						this.autoHide.endForFullScreen();
-					else
+					if (isEnteringFullScreenMode)
 						this.autoHide.startForFullScreen();
+					else
+						this.autoHide.endForFullScreen();
 				}
 				this.removeTabbrowserAttribute(this.kDOM_FULLSCREEN_ACTIVATED);
 			}
@@ -5653,7 +5682,9 @@ TreeStyleTabBrowser.prototype = {
 
 		this.subTreeMovingCount--;
 	},
-	moveTabSubTreeTo : function() { return this.moveTabSubtreeTo.apply(this, arguments); }, // obsolete, for backward compatibility
+	moveTabSubTreeTo : function(...aArgs) {
+		return this.moveTabSubtreeTo.apply(this, aArgs);
+	}, // obsolete, for backward compatibility
  
 	moveTabLevel : function TSTBrowser_moveTabLevel(aEvent) 
 	{
@@ -6590,11 +6621,21 @@ TreeStyleTabBrowser.prototype = {
 	{
 		return this.windowService[aName].apply(this.windowService, aArgs);
 	},
-	isPopupShown : function TSTBrowser_isPopupShown() { return this._callWindowServiceMethod('isPopupShown', arguments); },
-	updateTabsOnTop : function TSTBrowser_updateTabsOnTop() { return this._callWindowServiceMethod('updateTabsOnTop', arguments); },
-	registerTabFocusAllowance : function TSTBrowser_registerTabFocusAllowance() { return this._callWindowServiceMethod('registerTabFocusAllowance', arguments); },
-	isPopupShown : function TSTBrowser_isPopupShown() { return this._callWindowServiceMethod('isPopupShown', arguments); },
-	toggleAutoHide : function TSTBrowser_toggleAutoHide() { return this._callWindowServiceMethod('toggleAutoHide', arguments); },
+	isPopupShown : function TSTBrowser_isPopupShown(...aArgs) {
+		return this._callWindowServiceMethod('isPopupShown', aArgs);
+	},
+	updateTabsOnTop : function TSTBrowser_updateTabsOnTop(...aArgs) {
+		return this._callWindowServiceMethod('updateTabsOnTop', aArgs);
+	},
+	registerTabFocusAllowance : function TSTBrowser_registerTabFocusAllowance(...aArgs) {
+		return this._callWindowServiceMethod('registerTabFocusAllowance', aArgs);
+	},
+	isPopupShown : function TSTBrowser_isPopupShown(...aArgs) {
+		return this._callWindowServiceMethod('isPopupShown', aArgs);
+	},
+	toggleAutoHide : function TSTBrowser_toggleAutoHide(...aArgs) {
+		return this._callWindowServiceMethod('toggleAutoHide', aArgs);
+	},
  
 /* show/hide tab bar */ 
 	get autoHide()

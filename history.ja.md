@@ -1,9 +1,34 @@
 # 更新履歴
 
  - master/HEAD
+   * [Nav Bar on Title Bar](https://addons.mozilla.org/firefox/addon/nav-bar-on-title-bar/)との互換性を改善
+ - 0.14.2013112901
+   * 「タブが1つだけの時にタブバーを隠す」機能を提供するアドオン（Tab Mix Plus、[Hide Tab Bar With One Tab](https://addons.mozilla.org/firefox/addon/hide-tab-bar-with-one-tab/)など）や環境（Pale Moonなど）との互換性を向上
+   * [Context Search](http://www.cusser.net/extensions/contextsearch/)との互換性を向上（検索結果を子タブとして開くようにした）
+   * タブバーの幅・位置が固定されている時は、ポインタがタブバー上に乗ったらすぐにタブバーを展開するようにした。
+   * 「未整理のブックマーク」フォルダにあるブックマーク項目に対して、ブックマーク同士の関連性を変更するためのUIを無効化するようにした（当該フォルダのブックマークすべてを1つのツリーとして開く場面は通常あり得ないため）
+   * ピン留めされた未読のタブをツリー型タブ自身で強調表示するようにした
+   * タブバーを自動的に隠すモードで、タブを開いたり閉じたりした時にタブバーを一時的に展開する設定を有効にしている時に、タブバーが自動的に隠れなくなってしまっていたのを修正
+   * 1つのブックマークフォルダに大量のブックマーク項目が存在している時の、ブックマーク同士の関連性を変更するためのUIの初期化処理について、よりフリーズしにくいように改善したつもり
+   * タブバーを自動的に畳むモードで、終了時と次回起動時はに正しくタブバーの大きさを記憶・復元しておくようにした。
+   * DOMフルスクリーンからF11キーの押下で抜けた時に、タブバーを正しく再表示するようにした
+   * タブバーのスプリッタのつまみをクリックした時に、タブバーを正しく開閉するよう修正
+   * タブバーのスプリッタをドラッグした時に、タブバーを正しく開閉するよう修正
+   * Tab Mix Plusがある時のタブの背景色が意図せず無効化されてしまっていたのを修正
+   * ピン留めされたタブがある時に「すべてのタブの一覧」メニューの内容が正しく表示されるよう修正 ([by Infocatcher.](https://github.com/piroor/treestyletab/pull/606) Thanks!)
+   * Australisとの互換性を向上
+   * [Greasemonkey](https://addons.mozilla.org/firefox/addon/greasemonkey/) 1.11以降でスクリプトから開かれたタブが子タブにならなくなっていたのを修正
+   * フランス語ロケール更新（[by AxlMun. Thanks!](https://github.com/piroor/treestyletab/pull/595)）
+ - 0.14.2013100901
+   * ブラウズ領域周辺にUI要素が追加された時に、自動的にタブバーの位置やサイズを更新するようにした
+   * マルチディスプレイ環境において、タブのツリーに対するツールチップが別の画面に表示されてしまうことがあったのを修正
+   * 自動的に折り畳む（隠す）状態のタブバーがCtrlキーの長押しで表示されている時に、Ctrl-Tなどのキーボードショートカットでタブバーが折り畳まれ（隠され）てしまわないようにした
+   * 閉じられようとしているタブにフォーカスしないようにした（[issue #569](https://github.com/piroor/treestyletab/issues/569)などの、閉じられようとしているタブからのTabSelectイベントに起因する問題を解消）
+   * DOMフルスクリーンモード（YouTubeなどで使われる）において、Firefox本体の機能と同様に、タブバーの自動表示機能を無効化するようにした
    * 縦型タブバーを使用しているときはブラウザのツールバーを隠さないようにした（Webアプリケーションなどのタブに対して明示的にツールバーを隠す場面を除く）
    * Tab Mix Plusとの併用時にタブの下に余計な線が描画される問題を修正（[by wanabe. Thanks!](https://github.com/piroor/treestyletab/pull/556)）
    * 「何回戻れる？」との互換性を向上（[by wanabe. Thanks!](https://github.com/piroor/treestyletab/pull/554)）
+   * [Sidebars List](https://addons.mozilla.org/firefox/addon/sidebars-list/)との互換性を向上（[by Infocatcher. Thanks!](https://github.com/piroor/treestyletab/pull/571)）
  - 0.14.2013082301
    * Firefox 23以降で初期化に失敗する問題を修正（前バージョンでの後退バグ）
    * ロシア語ロケール更新（[by Infocatcher. Thanks!](https://github.com/piroor/treestyletab/pull/542)）

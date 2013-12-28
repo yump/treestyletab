@@ -18,6 +18,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
+ *                 Tetsuharu OHZEKI <https://github.com/saneyuki>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -42,6 +43,7 @@ const Ci = Components.interfaces;
 const Cu = Components.utils;
 
 Cu.import('resource://gre/modules/XPCOMUtils.jsm');
+Cu.import('resource://gre/modules/Services.jsm');
 
 XPCOMUtils.defineLazyModuleGetter(this, 'utils', 'resource://treestyletab-modules/utils.js', 'TreeStyleTabUtils');
 
@@ -77,7 +79,7 @@ AutoHideBrowser.prototype = {
 	kSHOWN_BY_SHORTCUT  : 1 << 0,
 	kSHOWN_BY_MOUSEMOVE : 1 << 1,
 	kSHOWN_BY_FEEDBACK  : 1 << 2,
-	kSHOWN_BY_SOME_REASON : (1 << 0) | (1 << 1) | (1 << 2),
+	kSHOWN_BY_ANY_REASON : (1 << 0) | (1 << 1) | (1 << 2),
 	kSHOWHIDE_BY_START  : 1 << 3,
 	kSHOWHIDE_BY_END    : 1 << 4,
 	kSHOWHIDE_BY_POSITION_CHANGE : 1 << 5,
@@ -362,7 +364,6 @@ AutoHideBrowser.prototype = {
 			if (shouldShow) {
 				this.show(this.kSHOWN_BY_MOUSEMOVE);
 				this.cancelDelayedShowForShortcut();
-				this.cancelHideForFeedback();
 			}
 			else if (
 				!shouldShow &&
@@ -382,7 +383,6 @@ AutoHideBrowser.prototype = {
 			this.showHideOnMouseMoveTimer = w.setTimeout(
 				function(aSelf) {
 					aSelf.cancelDelayedShowForShortcut();
-					aSelf.cancelHideForFeedback();
 					aSelf.show(aSelf.kSHOWN_BY_MOUSEMOVE);
 				},
 				utils.getTreePref('tabbar.autoHide.delay'),
@@ -406,13 +406,15 @@ AutoHideBrowser.prototype = {
 		var sensitiveArea = this.sensitiveArea;
 		if (this.shrunken) {
 			let clickable;
-			if (this.widthFromMode > 24 &&
+			let resizable = !sv.fixed;
+			if (resizable &
+				this.widthFromMode > 24 &&
 				(clickable = this.getNearestClickableBox(aEvent))) {
 				/* For resizing of shrunken tab bar and clicking closeboxes,
 				   we have to shrink sensitive area. */
 				sensitiveArea = -(clickable.width + clickable.padding);
 			}
-			else if (this.resizer)
+			else if (resizable && this.resizer)
 				sensitiveArea = -this.resizer.boxObject.width;
 			else
 				sensitiveArea = 0;
@@ -700,8 +702,8 @@ AutoHideBrowser.prototype = {
 		if (
 			this.expanded &&
 			this.contentAreaScreenEnabled &&
-			this.treeStyleTab.FocusManager.activeWindow &&
-			this.treeStyleTab.FocusManager.activeWindow.top == this.window &&
+			Services.focus.activeWindow &&
+			Services.focus.activeWindow.top == this.window &&
 			this.findPluginArea(this.browser.contentWindow)
 			) {
 			let box = this.getContentsAreaBox();
@@ -740,9 +742,12 @@ AutoHideBrowser.prototype = {
 	hide : function AHB_hide(aReason) /* PUBLIC API */ 
 	{
 		if (aReason) {
-			if (this.showHideReason & aReason)
+			if (aReason == this.kSHOWN_BY_ANY_REASON)
+				this.showHideReason &= ~this.kSHOWN_BY_ANY_REASON;
+			else if (this.showHideReason & aReason)
 				this.showHideReason ^= aReason;
-			if (this.showHideReason & this.kSHOWN_BY_SOME_REASON)
+
+			if (this.showHideReason & this.kSHOWN_BY_ANY_REASON)
 				return;
 		}
 		if (this.expanded)
@@ -1075,7 +1080,7 @@ AutoHideBrowser.prototype = {
 			!sv.isPopupShown() &&
 			(
 				!this.expanded ||
-				this.showHideReason & this.kSHOWN_BY_SOME_REASON
+				this.showHideReason & this.kSHOWN_BY_ANY_REASON
 			) &&
 			!this.lastMouseDownTarget
 			)

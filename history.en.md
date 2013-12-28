@@ -1,9 +1,34 @@
 # History
 
  - master/HEAD
+   * Improved: Better compatibility with [Nav Bar on Title Bar](https://addons.mozilla.org/firefox/addon/nav-bar-on-title-bar/).
+ - 0.14.2013112901
+   * Improved: Better compatibility with someone who change visibility of the tab bar, like "auto hide tab bar for last single tab" feature of Tab Mix Plus, Pale Moon, and [Hide Tab Bar With One Tab](https://addons.mozilla.org/firefox/addon/hide-tab-bar-with-one-tab/).
+   * Improved: Better compatibility with [Context Search](http://www.cusser.net/extensions/contextsearch/). Now search result tabs are opened as children of the current tab.
+   * Modified: Expand the shrunken tab bar immediately when the mouse pointer moves onto the tab bar, if the size of teh tab bar is fixed.
+   * Modified: Keep the UI to modify relations of bookmarks disabled, for bookmark items in the "Unsorted Bookmarks" folder. (Because people won't open all items in the folder as a tree of tabs by middle-click on the folder.)
+   * Modified: Updated pinned tabs are highlighted by TST itself.
+   * Fixed: Hide (or collapse) the tab bar correctly with delay, when a tab is opened or closed in the "auto hide" mode.
+   * Fixed: Better responsibility for bookmark management UI when there are very large number of sibling bookmarks in a folder.
+   * Fixed: Save and restore both sizes of expanded and shrunken tab bar correctly, on the next startup.
+   * Fixed: Re-show the tab bar correctly when the F11 key is pressed to exit from the DOM full-screen mode.
+   * Fixed: Show the tab bar again correctly when I click the grippy in the splitter.
+   * Fixed: Show the tab bar again correctly when I drag the splitter.
+   * Fixed: Correctly update "list all tabs" menu if there is pinned tabs ([by Infocatcher.](https://github.com/piroor/treestyletab/pull/606) Thanks!)
+   * Fixed: Better compatibility with "Australis".
+   * Fixed: Don't disable background color of tabs when Tab Mix Plus is installed.
+   * Fixed: Open tabs from user scripts with [Greasemonkey](https://addons.mozilla.org/firefox/addon/greasemonkey/) 1.11 correctly.
+   * [fr-FR locale is updated by AxlMun. Thanks!](https://github.com/piroor/treestyletab/pull/595)
+ - 0.14.2013100901
+   * Improved: Position and size of the tab bar is updated automatically when any element is inserted to the browser box.
+   * Fixed: Show the full tooltip near the original tooltip correctly, even if there are multiple screens.
+   * Fixed: Don't shrink/hide the tab bar for keyboard shortcuts Ctrl-T, Ctrl-R, etc, if the tab bar is shown by a long-press of the Ctrl key.
+   * Fixed: Don't focus to the tab which is going to be closed. This also fixes some breakages (including [issue #569](https://github.com/piroor/treestyletab/issues/569)) caused by TabSelect events from disappearing tabs.
+   * Fixed: Don't activate auto-hide feature of the tab bar for DOM-fullscreen mode (ex. YouTube). This is based on the behavior of Firefox's auto-hide feature in DOM-fullscreen mode.
    * Fixed: Don't hide browser's toolbars when the tab bar is vertical, except cases to hide them for special tabs (for example, web application).
    * Fixed: Erase odd border in each tab appearing with Tab Mix Plus. ([by wanabe. Thanks!](https://github.com/piroor/treestyletab/pull/556))
-   * Fixed: Improve compatibility with "How Many Times Can I Back?". ([by wanabe. Thanks!](https://github.com/piroor/treestyletab/pull/554))
+   * Fixed: Better compatibility with "How Many Times Can I Back?". ([by wanabe. Thanks!](https://github.com/piroor/treestyletab/pull/554))
+   * Fixed: Better compatibility with [Sidebars List](https://addons.mozilla.org/firefox/addon/sidebars-list/). ([by Infocatcher. Thanks!](https://github.com/piroor/treestyletab/pull/571))
  - 0.14.2013082301
    * Fixed: Failed to initialize on Firefox 23 and later. (regression on the previous release)
    * [ru locale is updated by Infocatcher. Thanks!](https://github.com/piroor/treestyletab/pull/542)

@@ -18,6 +18,8 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
+ *                 Infocatcher <https://github.com/Infocatcher>
+ *                 Tetsuharu OHZEKI <https://github.com/saneyuki>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -352,7 +354,8 @@ catch(e) {
 		var dropAreasCount = (aSourceTab && pinned) ? 2 : 3 ;
 		var screenPositionProp = sv.isVertical && pinned ? sv.invertedScreenPositionProp : sv.screenPositionProp ;
 		var sizeProp = sv.isVertical && pinned ? sv.invertedSizeProp : sv.sizeProp ;
-		var boxPos  = sv.getTabActualScreenPosition(tab);
+		var orient = pinned ? 'horizontal' : null ;
+		var boxPos  = sv.getTabActualScreenPosition(tab, orient);
 		var boxUnit = Math.round(tab.boxObject[sizeProp] / dropAreasCount);
 		var eventPosition = aEvent[screenPositionProp];
 //		if (this.window['piro.sakura.ne.jp'].tabsDragUtils
@@ -385,16 +388,20 @@ catch(e) {
 			case sv.kDROP_BEFORE:
 				if (DEBUG) dump('  position = before the tab\n');
 /*
-	[TARGET  ] ↑detach from parent, and move
+	     <= detach from parent, and move
+	[TARGET  ]
 
 	  [      ]
-	[TARGET  ] ↑attach to the parent of the target, and move
+	     <= attach to the parent of the target, and move
+	[TARGET  ]
 
 	[        ]
-	[TARGET  ] ↑attach to the parent of the target, and move
+	     <= attach to the parent of the target, and move
+	[TARGET  ]
 
 	[        ]
-	  [TARGET] ↑attach to the parent of the target (previous tab), and move
+	     <= attach to the parent of the target (previous tab), and move
+	  [TARGET]
 */
 				var prevTab = sv.getPreviousVisibleTab(tab);
 				if (!prevTab) {
@@ -421,15 +428,19 @@ catch(e) {
 			case sv.kDROP_AFTER:
 				if (DEBUG) dump('  position = after the tab\n');
 /*
-	[TARGET  ] ↓if the target has a parent, attach to it and and move
+	[TARGET  ]
+	     <= if the target has a parent, attach to it and and move
 
-	  [TARGET] ↓attach to the parent of the target, and move
+	  [TARGET]
+	     <= attach to the parent of the target, and move
 	[        ]
 
-	[TARGET  ] ↓attach to the parent of the target, and move
+	[TARGET  ]
+	     <= attach to the parent of the target, and move
 	[        ]
 
-	[TARGET  ] ↓attach to the target, and move
+	[TARGET  ]
+	     <= attach to the target, and move
 	  [      ]
 */
 				var nextTab = sv.getNextVisibleTab(tab);
@@ -444,7 +455,8 @@ catch(e) {
 					info.action       = sv.kACTION_MOVE | (info.parent ? sv.kACTION_ATTACH : sv.kACTION_PART );
 					info.insertBefore = nextTab;
 /*
-	[TARGET   ] ↓attach dragged tab to the parent of the target as its next sibling
+	[TARGET   ]
+	     <= attach dragged tab to the parent of the target as its next sibling
 	  [DRAGGED]
 */
 					if (aSourceTab == nextTab) {
@@ -469,12 +481,16 @@ catch(e) {
   
 	performDrop : function TabbarDND_performDrop(aInfo, aDraggedTab) 
 	{
+		if (DEBUG) dump('performDrop: start\n');
 		var sv = this.treeStyleTab;
 		var b  = this.browser;
 		var w  = this.window;
 
 		var tabsInfo = this.getDraggedTabsInfoFromOneTab(aDraggedTab, aInfo);
-		if (!tabsInfo.draggedTab) return false;
+		if (!tabsInfo.draggedTab) {
+			if (DEBUG) dump(' => no dragged tab\n');
+			return false;
+		}
 
 		var sourceWindow = aDraggedTab.ownerDocument.defaultView;
 		var sourceBrowser = sourceWindow.TreeStyleTabService.getTabBrowserFromChild(aDraggedTab);
@@ -523,14 +539,13 @@ catch(e) {
 			else if (aInfo.action & sv.kACTION_ATTACH) {
 				this.attachTabsOnDrop(draggedRoots, aInfo.parent);
 			}
-			else {
-				return false;
-			}
+			// otherwise, just moved.
 
 			if ( // if this move will cause no change...
 				sourceBrowser == targetBrowser &&
 				sourceService.getNextVisibleTab(draggedTabs[draggedTabs.length-1]) == aInfo.insertBefore
 				) {
+				if (DEBUG) dump(' => no change\n');
 				// then, do nothing
 				return true;
 			}

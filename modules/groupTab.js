@@ -18,6 +18,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
+ *                 Tetsuharu OHZEKI <https://github.com/saneyuki>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -271,7 +272,7 @@ GroupTab.prototype = {
 
 			case 'TabSelect':
 				return this.onTabSelect(aEvent);
-			case 'TabMove':
+
 			case this.kEVENT_TYPE_ATTACHED:
 				return this.onTabAttached(aEvent);
 			case this.kEVENT_TYPE_DETACHED:
@@ -299,7 +300,6 @@ GroupTab.prototype = {
 
 		tab.addEventListener('TabSelect', this, false);
 		tab.addEventListener('TabClose', this, false);
-		tab.parentNode.addEventListener('TabMove', this, false);
 		tab.parentNode.addEventListener(this.kEVENT_TYPE_ATTACHED, this, false);
 		tab.parentNode.addEventListener(this.kEVENT_TYPE_DETACHED, this, false);
 
@@ -327,7 +327,6 @@ GroupTab.prototype = {
 
 		tab.removeEventListener('TabSelect', this, false);
 		tab.removeEventListener('TabClose', this, false);
-		tab.parentNode.removeEventListener('TabMove', this, false);
 		tab.parentNode.removeEventListener(this.kEVENT_TYPE_ATTACHED, this, false);
 		tab.parentNode.removeEventListener(this.kEVENT_TYPE_DETACHED, this, false);
 

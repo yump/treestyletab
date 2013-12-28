@@ -18,6 +18,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
+ *                 Tetsuharu OHZEKI <https://github.com/saneyuki>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -60,6 +61,7 @@ XPCOMUtils.defineLazyModuleGetter(this, 'TreeStyleTabBrowser', 'resource://trees
 XPCOMUtils.defineLazyModuleGetter(this, 'utils', 'resource://treestyletab-modules/utils.js', 'TreeStyleTabUtils');
 XPCOMUtils.defineLazyModuleGetter(this, 'AutoHideWindow', 'resource://treestyletab-modules/autoHide.js');
 XPCOMUtils.defineLazyModuleGetter(this, 'TreeStyleTabThemeManager', 'resource://treestyletab-modules/themeManager.js');
+XPCOMUtils.defineLazyModuleGetter(this, 'FullscreenObserver', 'resource://treestyletab-modules/fullscreenObserver.js');
 XPCOMUtils.defineLazyModuleGetter(this, 'BrowserUIShowHideObserver', 'resource://treestyletab-modules/browserUIShowHideObserver.js');
 
 function TreeStyleTabWindow(aWindow) 
@@ -164,6 +166,11 @@ TreeStyleTabWindow.prototype = {
 	{
 		var w = this.window;
 		return w.gToolbox || w.gNavToolbox;
+	},
+ 
+	get browserBox()
+	{
+		return this.document.getElementById('browser');
 	},
  
 	get browserBottomBox()
@@ -361,7 +368,10 @@ TreeStyleTabWindow.prototype = {
 		d.addEventListener(this.kEVENT_TYPE_TABBAR_POSITION_CHANGED,     this, false);
 		d.addEventListener(this.kEVENT_TYPE_TABBAR_STATE_CHANGED,        this, false);
 		d.addEventListener(this.kEVENT_TYPE_FOCUS_NEXT_TAB,              this, false);
+		w.addEventListener('beforecustomization', this, true);
+		w.addEventListener('aftercustomization', this, false);
 
+		this.fullscreenObserver = new FullscreenObserver(this.window);
 		this.initUIShowHideObserver();
 
 		var appcontent = d.getElementById('appcontent');
@@ -438,28 +448,10 @@ TreeStyleTabWindow.prototype = {
 		if (!utils.getTreePref('enableSubtreeIndent.allTabsPopup'))
 			return;
 
-		var items = Array.slice(aEvent.originalTarget.childNodes);
-		var firstItemIndex = 0;
-		// ignore menu items inserted by Weave (Firefox Sync), Tab Utilities, and others.
-		for (let i = 0, maxi = items.length; i < maxi; i++)
-		{
-			let item = items[i];
-			if (
-				item.getAttribute('anonid') ||
-				item.id ||
-				item.hidden ||
-				item.localName != 'menuitem'
-				)
-				firstItemIndex = i + 1;
-		}
-		items = items.slice(firstItemIndex);
-
-		var b = this.getTabBrowserFromChild(aEvent.originalTarget) || this.browser;
-		var tabs = this.getTabs(b);
-		for (let i = 0, maxi = tabs.length; i < maxi; i++)
-		{
-			items[i].style.marginLeft = tabs[i].getAttribute(this.kNEST)+'em';
-		}
+		Array.forEach(aEvent.originalTarget.childNodes, function(aItem) {
+			if (aItem.classList.contains('alltabs-item') && 'tab' in aItem)
+				aItem.style.marginLeft = aItem.tab.getAttribute(this.kNEST) + 'em';
+		}, this);
 	},
  
 	initUIShowHideObserver : function TSTWindow_initUIShowHideObserver() 
@@ -469,6 +461,10 @@ TreeStyleTabWindow.prototype = {
 		var toolbox = this.browserToolbox;
 		if (toolbox)
 			this.browserToolboxObserver = new BrowserUIShowHideObserver(this, toolbox);
+
+		var browserBox = this.browserBox;
+		if (browserBox)
+			this.browserBoxObserver = new BrowserUIShowHideObserver(this, browserBox);
 
 		var bottomBox = this.browserBottomBox;
 		if (bottomBox)
@@ -502,6 +498,11 @@ TreeStyleTabWindow.prototype = {
 				d.removeEventListener(this.kEVENT_TYPE_TABBAR_POSITION_CHANGED,     this, false);
 				d.removeEventListener(this.kEVENT_TYPE_TABBAR_STATE_CHANGED,        this, false);
 				d.removeEventListener(this.kEVENT_TYPE_FOCUS_NEXT_TAB,              this, false);
+				w.removeEventListener('beforecustomization', this, true);
+				w.removeEventListener('aftercustomization', this, false);
+
+				this.fullscreenObserver.destroy();
+				delete this.fullscreenObserver;
 
 				this.rootElementObserver.destroy();
 				delete this.rootElementObserver;
@@ -509,6 +510,10 @@ TreeStyleTabWindow.prototype = {
 				if (this.browserToolboxObserver) {
 					this.browserToolboxObserver.destroy();
 					delete this.browserToolboxObserver;
+				}
+				if (this.browserBoxObserver) {
+					this.browserBoxObserver.destroy();
+					delete this.browserBoxObserver;
 				}
 				if (this.browserBottomBoxObserver) {
 					this.browserBottomBoxObserver.destroy();
@@ -609,6 +614,16 @@ TreeStyleTabWindow.prototype = {
 			case 'click':
 				return this.handleNewTabActionOnButton(aEvent);
 
+
+			case 'beforecustomization':
+				this.window.TreeStyleTabWindowHelper.destroyToolbarItems();
+				return;
+
+			case 'aftercustomization':
+				this.window.TreeStyleTabWindowHelper.initToolbarItems();
+				return;
+
+
 			case 'SubBrowserAdded':
 				return this.initTabBrowser(aEvent.originalTarget.browser);
 
@@ -690,8 +705,7 @@ TreeStyleTabWindow.prototype = {
 		var up    = aEvent.keyCode == Ci.nsIDOMKeyEvent.DOM_VK_UP;
 		var down  = aEvent.keyCode == Ci.nsIDOMKeyEvent.DOM_VK_DOWN;
 		if (
-			this.FocusManager &&
-			this.FocusManager.focusedElement == this.browser.selectedTab &&
+			Services.focus.focusedElement == this.browser.selectedTab &&
 			(up || down || left || right)
 			)
 			this.arrowKeyEventOnTab = {
@@ -772,6 +786,14 @@ TreeStyleTabWindow.prototype = {
 			this.fireDataContainerEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_START.replace(/^nsDOM/, ''), b, true, false, data);
 			return;
 		}
+
+		if (aEvent.type == 'keypress' ?
+				// ignore keypress on Ctrl-R, Ctrl-T, etc.
+				aEvent.charCode != 0 :
+				// ignore keyup not on the Ctrl key
+				aEvent.keyCode != Ci.nsIDOMKeyEvent.DOM_VK_CONTROL
+			)
+			return;
 
 		// when you just release accel key...
 
@@ -945,7 +967,9 @@ TreeStyleTabWindow.prototype = {
 		else
 			aMenuItem.setAttribute('hidden', true);
 	},
-	showHideSubTreeMenuItem : function() { return this.showHideSubtreeMenuItem.apply(this, arguments); }, // obsolete, for backward compatibility
+	showHideSubTreeMenuItem : function(...aArgs) {
+		return this.showHideSubtreeMenuItem.apply(this, aArgs);
+	}, // obsolete, for backward compatibility
  
 	updateAeroPeekPreviews : function TSTWindow_updateAeroPeekPreviews() 
 	{
@@ -1001,37 +1025,44 @@ TreeStyleTabWindow.prototype = {
  
 	updateTabsOnTop : function TSTWindow_updateTabsOnTop() 
 	{
-		var w = this.window;
 		if (
 			this.isPopupWindow ||
 			this.tabsOnTopChangingByUI ||
-			this.tabsOnTopChangingByTST ||
-			!('TabsOnTop' in w) ||
-			!('enabled' in w.TabsOnTop)
+			this.tabsOnTopChangingByTST
 			)
 			return;
+
+		var TabsOnTop = this.window.TabsOnTop;
+		var TabsInTitlebar = this.window.TabsInTitlebar;
+		var isTopTabbar = this.browser.treeStyleTab.position == 'top';
 
 		this.tabsOnTopChangingByTST = true;
 
 		try {
-			var TabsOnTop = w.TabsOnTop;
-			var originalState = utils.getTreePref('tabsOnTop.originalState');
-			if (originalState === null) {
-				let current = prefs.getDefaultPref('browser.tabs.onTop') === null ?
-								TabsOnTop.enabled :
-								prefs.getPref('browser.tabs.onTop') ;
-				utils.setTreePref('tabsOnTop.originalState', originalState = current);
-			}
+			if (TabsOnTop) {
+				let originalState = utils.getTreePref('tabsOnTop.originalState');
+				if (originalState === null) {
+					let current = prefs.getDefaultPref('browser.tabs.onTop') === null ?
+									TabsOnTop.enabled :
+									prefs.getPref('browser.tabs.onTop') ;
+					utils.setTreePref('tabsOnTop.originalState', originalState = current);
+				}
 
-			if (this.browser.treeStyleTab.position != 'top' ||
-				!this.browser.treeStyleTab.fixed) {
-				if (TabsOnTop.enabled)
-					TabsOnTop.enabled = false;
+				if (!isTopTabbar || !this.browser.treeStyleTab.fixed) {
+					if (TabsOnTop.enabled)
+						TabsOnTop.enabled = false;
+				}
+				else {
+					if (TabsOnTop.enabled != originalState)
+						TabsOnTop.enabled = originalState;
+					utils.clearTreePref('tabsOnTop.originalState');
+				}
 			}
-			else {
-				if (TabsOnTop.enabled != originalState)
-					TabsOnTop.enabled = originalState;
-				utils.clearTreePref('tabsOnTop.originalState');
+			if (TabsInTitlebar) {
+				let allowed = isTopTabbar && this.browser.treeStyleTab.fixed;
+				if ('navbarontop' in this.window && utils.getTreePref('compatibility.NavbarOnTitlebar'))
+					allowed = true;
+				TabsInTitlebar.allowedBy('TreeStyleTab-tabsOnTop', allowed);
 			}
 		}
 		finally {
@@ -1272,7 +1303,9 @@ TreeStyleTabWindow.prototype = {
 			this.fireTabSubtreeClosedEvent(b, subtreeTabs[0], subtreeTabs)
 		}
 	},
-	removeTabSubTree : function() { return this.removeTabSubtree.apply(this, arguments); }, // obsolete, for backward compatibility
+	removeTabSubTree : function(...aArgs) {
+		return this.removeTabSubtree.apply(this, aArgs);
+	}, // obsolete, for backward compatibility
 	
 	fireTabSubtreeClosingEvent : function TSTWindow_fireTabSubtreeClosingEvent(aParentTab, aClosedTabs) 
 	{
@@ -1312,7 +1345,9 @@ TreeStyleTabWindow.prototype = {
 		var tabs = [aTab].concat(this.getDescendantTabs(aTab));
 		return this.warnAboutClosingTabs(tabs.length);
 	},
-	warnAboutClosingTabSubTreeOf : function() { return this.warnAboutClosingTabSubtreeOf.apply(this, arguments); }, // obsolete, for backward compatibility
+	warnAboutClosingTabSubTreeOf : function(...aArgs) {
+		return this.warnAboutClosingTabSubtreeOf.apply(this, aArgs);
+	}, // obsolete, for backward compatibility
  
 	warnAboutClosingTabs : function TSTWindow_warnAboutClosingTabs(aTabsCount) 
 	{
@@ -1348,7 +1383,9 @@ TreeStyleTabWindow.prototype = {
 			b.reloadTab(tabs[i]);
 		}
 	},
-	reloadTabSubTree : function() { return this.reloadTabSubtree.apply(this, arguments); }, // obsolete, for backward compatibility
+	reloadTabSubTree : function(...aArgs) {
+		return this.reloadTabSubtree.apply(this, aArgs);
+	}, // obsolete, for backward compatibility
  
 	createSubtree : function TSTWindow_createSubtree(aTabs) 
 	{
@@ -1410,7 +1447,9 @@ TreeStyleTabWindow.prototype = {
 			}
 		}).error(this.defaultDeferredErrorHandler);
 	},
-	createSubTree : function() { return this.createSubtree.apply(this, arguments); }, // obsolete, for backward compatibility
+	createSubTree : function(...aArgs) {
+		return this.createSubtree.apply(this, aArgs);
+	}, // obsolete, for backward compatibility
 	
 	canCreateSubtree : function TSTWindow_canCreateSubtree(aTabs) 
 	{
@@ -1425,7 +1464,9 @@ TreeStyleTabWindow.prototype = {
 		}
 		return true;
 	},
-	canCreateSubTree : function() { return this.canCreateSubtree.apply(this, arguments); }, // obsolete, for backward compatibility
+	canCreateSubTree : function(...aArgs) {
+		return this.canCreateSubtree.apply(this, aArgs);
+	}, // obsolete, for backward compatibility
  
 	getRootTabs : function TSTWindow_getRootTabs(aTabs) 
 	{
@@ -1585,7 +1626,9 @@ TreeStyleTabWindow.prototype = {
 		}
 		return false;
 	},
-	tearOffSubTreeFromRemote : function() { return this.tearOffSubtreeFromRemote.apply(this, arguments); }, // obsolete, for backward compatibility
+	tearOffSubTreeFromRemote : function(...aArgs) {
+		return this.tearOffSubtreeFromRemote.apply(this, aArgs);
+	}, // obsolete, for backward compatibility
  
 	onPrintPreviewEnter : function TSTWindow_onPrintPreviewEnter() 
 	{
