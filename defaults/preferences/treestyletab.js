@@ -601,7 +601,6 @@ pref("extensions.treestyletab.restoreTree.level", 1);
  * conflict with TST features. They will be rolled back when TST is uninstalled.
  */
 pref("browser.link.open_newwindow.restriction.override", 0);
-pref("browser.tabs.loadFolderAndReplace.override", false);
 pref("browser.tabs.insertRelatedAfterCurrent.override", false);
 pref("browser.tabs.insertRelatedAfterCurrent.override.force", true);
 
@@ -678,6 +677,7 @@ pref("extensions.treestyletab.compatibility.STM.warnForNewTabPosition", true);
 pref("extensions.treestyletab.compatibility.STM", true); // Super Tab Mode
 pref("extensions.treestyletab.compatibility.SuperDragAndGo", true);
 pref("extensions.treestyletab.compatibility.Tabberwocky", true);
+pref("extensions.treestyletab.compatibility.TabControl", true);
 pref("extensions.treestyletab.compatibility.TabUtilities", true);
 pref("extensions.treestyletab.compatibility.TMP", true); // Tab Mix Plus
 pref("extensions.treestyletab.compatibility.TooManyTabs", true);
