@@ -43,6 +43,7 @@ const Cu = Components.utils;
 Cu.import('resource://gre/modules/XPCOMUtils.jsm');
 Cu.import('resource://gre/modules/Services.jsm');
 Cu.import('resource://gre/modules/Timer.jsm');
+Cu.import('resource://treestyletab-modules/lib/inherit.jsm');
 Cu.import('resource://treestyletab-modules/constants.js');
 
 XPCOMUtils.defineLazyGetter(this, 'window', function() {
@@ -83,8 +84,7 @@ else {
 	this.AeroPeek = null;
 }
  
-var TreeStyleTabBase = { 
-	__proto__ : TreeStyleTabConstants,
+var TreeStyleTabBase = inherit(TreeStyleTabConstants, { 
 	
 	tabsHash : null, 
 	inWindowDestoructionProcess : false,
@@ -724,9 +724,9 @@ var TreeStyleTabBase = {
 	},
 	
 	// called with target(nsIDOMEventTarget), document(nsIDOMDocument), type(string) and data(object) 
-	fireDataContainerEvent : function TSTBase_fireDataContainerEvent(...aArgs)
+	fireCustomEvent : function TSTBase_fireCustomEvent(...aArgs)
 	{
-		var target, document, type, data, canBubble, cancellable;
+		var target, document, type, data, canBubble, cancelable;
 		for (let i = 0, maxi = aArgs.length; i < maxi; i++)
 		{
 			let arg = aArgs[i];
@@ -734,7 +734,7 @@ var TreeStyleTabBase = {
 				if (canBubble === void(0))
 					canBubble = arg;
 				else
-					cancellable = arg;
+					cancelable = arg;
 			}
 			else if (typeof arg == 'string')
 				type = arg;
@@ -750,17 +750,11 @@ var TreeStyleTabBase = {
 		if (!document)
 			document = target.ownerDocument || target;
 
-		var event = document.createEvent('DataContainerEvent');
-		event.initEvent(type, canBubble, cancellable);
-		var properties = Object.keys(data);
-		for (let i = 0, maxi = properties.length; i < maxi; i++)
-		{
-			let property = properties[i];
-			let value = data[property];
-			event.setData(property, value);
-			event[property] = value; // for backward compatibility
-		}
-
+		var event = new this.window.CustomEvent(type, {
+			bubbles    : canBubble,
+			cancelable : cancelable,
+			detail     : data
+		});
 		return target.dispatchEvent(event);
 	},
  
@@ -1102,6 +1096,19 @@ var TreeStyleTabBase = {
 				aEvent.originalTarget,
 				Ci.nsIDOMXPathResult.BOOLEAN_TYPE
 			).booleanValue;
+	},
+ 
+	getTabFromBrowser : function TSTBase_getTabFromBrowser(aBrowser, aTabBrowser) 
+	{
+		var b = aTabBrowser || this.browser;
+		var tabs = this.getAllTabs(b);
+		for (let i = 0, maxi = tabs.length; i < maxi; i++)
+		{
+			let tab = tabs[i];
+			if (tab.linkedBrowser == aBrowser)
+				return tab;
+		}
+		return null;
 	},
  
 	getTabFromFrame : function TSTBase_getTabFromFrame(aFrame, aTabBrowser) 
@@ -2560,7 +2567,7 @@ var TreeStyleTabBase = {
 		}
 	}
    
-}; 
+}); 
   
 TreeStyleTabBase.init(); 
  

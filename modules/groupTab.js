@@ -14,7 +14,7 @@
  * The Original Code is the Tree Style Tab.
  *
  * The Initial Developer of the Original Code is YUKI "Piro" Hiroshi.
- * Portions created by the Initial Developer are Copyright (C) 2010-2013
+ * Portions created by the Initial Developer are Copyright (C) 2010-2014
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
@@ -39,6 +39,7 @@ const EXPORTED_SYMBOLS = ['GroupTab'];
 const Cc = Components.classes;
 const Ci = Components.interfaces;
 
+Components.utils.import('resource://treestyletab-modules/lib/inherit.jsm');
 Components.utils.import('resource://treestyletab-modules/base.js');
 Components.utils.import('resource://treestyletab-modules/pseudoTreeBuilder.js');
 
@@ -48,8 +49,7 @@ function GroupTab(aWindow)
 	this.init();
 }
 
-GroupTab.prototype = {
-	__proto__ : TreeStyleTabBase,
+GroupTab.prototype = inherit(TreeStyleTabBase, {
 
 	initialized : false,
 	shouldUpdate : false,
@@ -375,11 +375,11 @@ GroupTab.prototype = {
 		if (!b)
 			return;
 
-		var tab = this.getTabById(aEvent.getData('id'));
+		var tab = this.getTabById(aEvent.detail.id);
 		if (!tab)
 			return;
 
-		var event = aEvent.getData('sourceEvent');
+		var event = aEvent.detail.sourceEvent;
 		if (event.button == 1 ||
 			(event.button == 0 && this.isAccelKeyPressed(event)))
 			b.removeTab(tab);
@@ -397,7 +397,7 @@ GroupTab.prototype = {
 
 	onTabAttached : function GT_onTabAttached(aEvent)
 	{
-		var tab = aEvent.getData('parentTab');
+		var tab = aEvent.detail.parentTab;
 		var id = tab.getAttribute(this.kID);
 		if (tab == this.getOwnerTab() ||
 			this.document.getElementsByAttribute('tab-id', id).length)
@@ -427,4 +427,4 @@ GroupTab.prototype = {
 
 		this.checkUpdateTreeNow();
 	}
-};
+});

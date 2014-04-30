@@ -425,6 +425,13 @@ pref("extensions.treestyletab.autoCollapseExpandSubtreeOnSelect",      true);
  */
 pref("extensions.treestyletab.autoCollapseExpandSubtreeOnSelect.onCurrentTabRemove", true);
 /**
+ * When a new child tab is opened (or attached) under an existing tab,
+ * other existing expanded trees can counteract that you find out where the new
+ * attached tab is. If you set this to "true", TST automatically collapses other
+ * expanded trees at the time.
+ */
+pref("extensions.treestyletab.autoCollapseExpandSubtreeOnAttach", true);
+/**
  * When you press Ctrl-Tab/Shift-Ctrl-Tab, Firefox advances focus of tabs.
  * If this is "true", TST expands focused tree after a delay specified
  * by another preference "autoExpandSubtreeOnSelect.whileFocusMovingByShortcut.delay".
@@ -638,6 +645,7 @@ pref("extensions.treestyletab.pinnedTab.faviconized", true);
 pref("extensions.treestyletab.compatibility.AgingTabs", true);
 pref("extensions.treestyletab.compatibility.AIOS", true); // All-in-One Sidebar
 pref("extensions.treestyletab.compatibility.Autohide", true);
+pref("extensions.treestyletab.compatibility.ClassicThemeRestorer", true);
 pref("extensions.treestyletab.compatibility.ColorfulTabs", true);
 pref("extensions.treestyletab.compatibility.ContextSearch", true);
 pref("extensions.treestyletab.compatibility.DomainTab", true);

@@ -14,7 +14,7 @@
  * The Original Code is the Tree Style Tab.
  *
  * The Initial Developer of the Original Code is YUKI "Piro" Hiroshi.
- * Portions created by the Initial Developer are Copyright (C) 2012-2013
+ * Portions created by the Initial Developer are Copyright (C) 2012-2014
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
@@ -41,6 +41,7 @@ const Ci = Components.interfaces;
 const Cu = Components.utils;
 
 Cu.import('resource://gre/modules/XPCOMUtils.jsm');
+Cu.import('resource://treestyletab-modules/lib/inherit.jsm');
 
 XPCOMUtils.defineLazyGetter(this, 'window', function() {
 	Cu.import('resource://treestyletab-modules/lib/namespace.jsm');
@@ -64,7 +65,7 @@ XPCOMUtils.defineLazyModuleGetter(this, 'TreeStyleTabThemeManager', 'resource://
 XPCOMUtils.defineLazyModuleGetter(this, 'FullscreenObserver', 'resource://treestyletab-modules/fullscreenObserver.js');
 XPCOMUtils.defineLazyModuleGetter(this, 'BrowserUIShowHideObserver', 'resource://treestyletab-modules/browserUIShowHideObserver.js');
 
-function TreeStyleTabWindow(aWindow) 
+function TreeStyleTabWindow(aWindow)
 {
 	this.window = aWindow;
 	this.document = aWindow.document;
@@ -80,10 +81,9 @@ function TreeStyleTabWindow(aWindow)
 	XPCOMUtils.defineLazyModuleGetter(aWindow, 'TreeStyleTabBrowser', 'resource://treestyletab-modules/browser.js');
 }
 
-TreeStyleTabWindow.prototype = {
+TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 	
 	base : TreeStyleTabBase, 
-	__proto__ : TreeStyleTabBase,
  
 	window : null, 
 	document : null,
@@ -162,18 +162,18 @@ TreeStyleTabWindow.prototype = {
 			w.gBrowser ;
 	},
  
-	get browserToolbox()
+	get browserToolbox() 
 	{
 		var w = this.window;
 		return w.gToolbox || w.gNavToolbox;
 	},
  
-	get browserBox()
+	get browserBox() 
 	{
 		return this.document.getElementById('browser');
 	},
  
-	get browserBottomBox()
+	get browserBottomBox() 
 	{
 		return this.document.getElementById('browser-bottombox');
 	},
@@ -269,7 +269,7 @@ TreeStyleTabWindow.prototype = {
  
 	shouldOpenSearchResultAsChild : function TSTWindow_shouldOpenSearchResultAsChild(aTerm) 
 	{
-		aTerm = aTerm.replace(/^\s+|\s+$/g, '');
+		aTerm = aTerm.trim();
 
 		var mode = utils.getTreePref('autoAttach.searchResult');
 		if (mode == this.kSEARCH_RESULT_ATTACH_ALWAYS) {
@@ -279,18 +279,8 @@ TreeStyleTabWindow.prototype = {
 			return false;
 		}
 
-		var w = this.document.commandDispatcher.focusedWindow;
-		if (!w || w.top != this.browser.contentWindow)
-			w = this.browser.contentWindow;
-
-		return (function checkWindow(aWindow) {
-			if (!aWindow || !(aWindow instanceof Ci.nsIDOMWindow))
-				return false;
-			var selection = aWindow.getSelection();
-			if (selection && selection.toString().replace(/^\s+|\s+$/g, '') == aTerm)
-				return true;
-			return aWindow.frames ? Array.slice(aWindow.frames).some(checkWindow) : false ;
-		})(w);
+		var selection = this.window.getBrowserSelection();
+		return selection.trim() == aTerm;
 	},
 	kSEARCH_RESULT_DO_NOT_ATTACH      : 0,
 	kSEARCH_RESULT_ATTACH_IF_SELECTED : 1,
@@ -374,6 +364,10 @@ TreeStyleTabWindow.prototype = {
 		d.addEventListener(this.kEVENT_TYPE_FOCUS_NEXT_TAB,              this, false);
 		w.addEventListener('beforecustomization', this, true);
 		w.addEventListener('aftercustomization', this, false);
+
+		// for Firefox 29 and later, after https://bugzilla.mozilla.org/show_bug.cgi?id=942374
+		if (w.messageManager && utils.shouldUseMessageManager)
+			w.messageManager.addMessageListener('SessionStore:restoreTabContentStarted', this);
 
 		this.fullscreenObserver = new FullscreenObserver(this.window);
 		this.initUIShowHideObserver();
@@ -504,6 +498,10 @@ TreeStyleTabWindow.prototype = {
 				d.removeEventListener(this.kEVENT_TYPE_FOCUS_NEXT_TAB,              this, false);
 				w.removeEventListener('beforecustomization', this, true);
 				w.removeEventListener('aftercustomization', this, false);
+
+				// for Firefox 29 and later, after https://bugzilla.mozilla.org/show_bug.cgi?id=942374
+				if (w.messageManager && utils.shouldUseMessageManager)
+					w.messageManager.removeMessageListener('SessionStore:restoreTabContentStarted', this);
 
 				this.fullscreenObserver.destroy();
 				delete this.fullscreenObserver;
@@ -735,9 +733,9 @@ TreeStyleTabWindow.prototype = {
 			};
 
 		/* PUBLIC API */
-		this.fireDataContainerEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_KEY_DOWN, b, true, false, data);
+		this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_KEY_DOWN, b, true, false, data);
 		// for backward compatibility
-		this.fireDataContainerEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_KEY_DOWN.replace(/^nsDOM/, ''), b, true, false, data);
+		this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_KEY_DOWN.replace(/^nsDOM/, ''), b, true, false, data);
 	},
 	accelKeyPressed : false,
 	arrowKeyEventOnTab : null,
@@ -790,9 +788,9 @@ TreeStyleTabWindow.prototype = {
 			)
 			) {
 			/* PUBLIC API */
-			this.fireDataContainerEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_START, b, true, false, data);
+			this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_START, b, true, false, data);
 			// for backward compatibility
-			this.fireDataContainerEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_START.replace(/^nsDOM/, ''), b, true, false, data);
+			this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_START.replace(/^nsDOM/, ''), b, true, false, data);
 			return;
 		}
 
@@ -808,9 +806,9 @@ TreeStyleTabWindow.prototype = {
 
 		/* PUBLIC API */
 		let (event) {
-			this.fireDataContainerEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END, b, true, false, data);
+			this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END, b, true, false, data);
 			// for backward compatibility
-			this.fireDataContainerEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END.replace(/^nsDOM/, ''), b, true, false, data);
+			this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END.replace(/^nsDOM/, ''), b, true, false, data);
 		}
 
 		if (this._tabShouldBeExpandedAfterKeyReleased) {
@@ -841,9 +839,9 @@ TreeStyleTabWindow.prototype = {
 			sourceEvent  : null
 		};
 		/* PUBLIC API */
-		this.fireDataContainerEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END, this.browser, true, false, data);
+		this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END, this.browser, true, false, data);
 		// for backward compatibility
-		this.fireDataContainerEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END.replace(/^nsDOM/, ''), this.browser, true, false, data);
+		this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END.replace(/^nsDOM/, ''), this.browser, true, false, data);
 	},
  
 	get shouldListenKeyEventsForAutoExpandByFocusChange() 
@@ -861,6 +859,24 @@ TreeStyleTabWindow.prototype = {
 				prefs.getPref('browser.ctrlTab.previews');
 	},
    
+	// for Firefox 29 and later, after https://bugzilla.mozilla.org/show_bug.cgi?id=942374
+	receiveMessage : function TSTWindow_receiveMessage(aMessage) 
+	{
+		var browser = aMessage.target;
+		var tabbrowser = this.getTabBrowserFromChild(browser);
+		if (!tabbrowser)
+			return;
+		var tab = tabbrowser.treeStyleTab.getTabFromBrowser(browser);
+		if (!tab)
+			return;
+
+		switch (aMessage.name)
+		{
+			case 'SessionStore:restoreTabContentStarted':
+				return tabbrowser.treeStyleTab.onRestoreTabContentStarted(tab);
+		}
+	},
+ 
 	onTabbarResizeStart : function TSTWindow_onTabbarResizeStart(aEvent) 
 	{
 		if (aEvent.button != 0)
@@ -1090,7 +1106,10 @@ TreeStyleTabWindow.prototype = {
 			}
 			if (TabsInTitlebar) {
 				let allowed = isTopTabbar && this.browser.treeStyleTab.fixed;
-				if ('navbarontop' in this.window && utils.getTreePref('compatibility.NavbarOnTitlebar'))
+				if (
+					('navbarontop' in this.window && utils.getTreePref('compatibility.NavbarOnTitlebar')) ||
+					('classicthemerestorerjs' in this.window && utils.getTreePref('compatibility.ClassicThemeRestorer'))
+					)
 					allowed = true;
 				TabsInTitlebar.allowedBy('TreeStyleTab-tabsOnTop', allowed);
 			}
@@ -1346,9 +1365,9 @@ TreeStyleTabWindow.prototype = {
 			};
 		var canClose = (
 			/* PUBLIC API */
-			this.fireDataContainerEvent(this.kEVENT_TYPE_SUBTREE_CLOSING, b, true, true, data) &&
+			this.fireCustomEvent(this.kEVENT_TYPE_SUBTREE_CLOSING, b, true, true, data) &&
 			// for backward compatibility
-			this.fireDataContainerEvent(this.kEVENT_TYPE_SUBTREE_CLOSING.replace(/^nsDOM/, ''), b, true, true, data)
+			this.fireCustomEvent(this.kEVENT_TYPE_SUBTREE_CLOSING.replace(/^nsDOM/, ''), b, true, true, data)
 		);
 		return canClose;
 	},
@@ -1362,9 +1381,9 @@ TreeStyleTabWindow.prototype = {
 			};
 
 		/* PUBLIC API */
-		this.fireDataContainerEvent(this.kEVENT_TYPE_SUBTREE_CLOSED, aTabBrowser, true, false, data);
+		this.fireCustomEvent(this.kEVENT_TYPE_SUBTREE_CLOSED, aTabBrowser, true, false, data);
 		// for backward compatibility
-		this.fireDataContainerEvent(this.kEVENT_TYPE_SUBTREE_CLOSED.replace(/^nsDOM/, ''), aTabBrowser, true, false, data);
+		this.fireCustomEvent(this.kEVENT_TYPE_SUBTREE_CLOSED.replace(/^nsDOM/, ''), aTabBrowser, true, false, data);
 	},
  
 	warnAboutClosingTabSubtreeOf : function TSTWindow_warnAboutClosingTabSubtreeOf(aTab) 
@@ -1389,9 +1408,11 @@ TreeStyleTabWindow.prototype = {
 		var checked = { value:true };
 		var w = this.window;
 		w.focus();
+		var message = utils.tabbrowserBundle.getFormattedString('tabs.closeWarningMultipleTabs', [aTabsCount]) || // Firefox 28 and older
+						w.PluralForm.get(aTabsCount, utils.tabbrowserBundle.getString('tabs.closeWarningMultiple')).replace('#1', aTabsCount) ; // Firefox 29 and later
 		var shouldClose = Services.prompt.confirmEx(w,
 				utils.tabbrowserBundle.getString('tabs.closeWarningTitle'),
-				utils.tabbrowserBundle.getFormattedString('tabs.closeWarningMultipleTabs', [aTabsCount]),
+				message,
 				(Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_0) +
 				(Services.prompt.BUTTON_TITLE_CANCEL * Services.prompt.BUTTON_POS_1),
 				utils.tabbrowserBundle.getString('tabs.closeButtonMultiple'),
@@ -1753,5 +1774,5 @@ TreeStyleTabWindow.prototype = {
 		}
 	}
   
-}; 
+}); 
   

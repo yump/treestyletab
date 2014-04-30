@@ -73,6 +73,28 @@ var TreeStyleTabWindowHelper = {
 			);
 		}
 
+		let (functions = [
+				'window.duplicateTab.handleLinkClick',
+				'window.duplicatethistab.handleLinkClick',
+				'window.__treestyletab__highlander__origHandleLinkClick',
+				'window.__splitbrowser__handleLinkClick',
+				'window.__ctxextensions__handleLinkClick',
+				'window.handleLinkClick'
+			]) {
+			for (let i = 0, maxi = functions.length; i < maxi; i++)
+			{
+				let func = functions[i];
+				let source = this._getFunctionSource(func);
+				if (!source || !/^\(?function handleLinkClick/.test(source))
+					continue;
+				eval(func+' = '+source.replace(
+					/(charset\s*:\s*doc\.characterSet\s*)/,
+					'$1, event : event, linkNode : linkNode'
+				));
+				break;
+			}
+		}
+
 		this.overrideExtensionsPreInit(); // windowHelperHacks.js
 	},
  
@@ -155,7 +177,7 @@ var TreeStyleTabWindowHelper = {
 		eval('nsContextMenu.prototype.addDictionaries = '+
 			nsContextMenu.prototype.addDictionaries.toSource().replace(
 				'openUILinkIn(',
-				'TreeStyleTabService.onBeforeOpenLink(aWhere, this.target.ownerDocument.defaultView); $&'
+				'TreeStyleTabService.onBeforeOpenLink(where, this.target.ownerDocument.defaultView); $&'
 			)
 		);
 
@@ -175,28 +197,6 @@ var TreeStyleTabWindowHelper = {
 						'TreeStyleTabService.onBeforeBrowserSearch(arguments[0], useNewTab); $&'
 					)
 				);
-			}
-		}
-
-		let (functions = [
-				'window.duplicateTab.handleLinkClick',
-				'window.duplicatethistab.handleLinkClick',
-				'window.__treestyletab__highlander__origHandleLinkClick',
-				'window.__splitbrowser__handleLinkClick',
-				'window.__ctxextensions__handleLinkClick',
-				'window.handleLinkClick'
-			]) {
-			for (let i = 0, maxi = functions.length; i < maxi; i++)
-			{
-				let func = functions[i];
-				let source = this._getFunctionSource(func);
-				if (!source || !/^\(?function handleLinkClick/.test(source))
-					continue;
-				eval(func+' = '+source.replace(
-					/(charset\s*:\s*doc\.characterSet\s*)/,
-					'$1, event : event, linkNode : linkNode'
-				));
-				break;
 			}
 		}
 
@@ -312,7 +312,7 @@ var TreeStyleTabWindowHelper = {
 					return aString
 							.replace(/\/\*.*\*\//g, '')
 							.replace(/\/\/.+$/, '')
-							.replace(/^\s+|\s+$/g, '');
+							.trim();
 				});
 	},
 	_getFunctionSource : function TSTWH__getFunctionSource(aFunc)
@@ -512,6 +512,17 @@ var TreeStyleTabWindowHelper = {
 					/\.left/g, '[treeStyleTab.startProp]'
 				).replace(
 					/\.right/g, '[treeStyleTab.endProp]'
+
+				// replace such codes:
+				//   tab = {left: tab.left, right: tab.right};
+				).replace(
+					/left\s*:/g, 'start:'
+				).replace(
+					/right\s*:/g, 'end:'
+				).replace(
+					/((tab|selected)\s*=\s*\{\s*start:[^\}]+\})/g,
+					'$1; $2[treeStyleTab.startProp] = $2.start; $2[treeStyleTab.endProp] = $2.end;'
+
 				).replace(
 					'!selected ||',
 					'$& treeStyleTab.scrollToNewTabMode == 1 && '
