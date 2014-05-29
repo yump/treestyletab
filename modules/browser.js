@@ -2342,6 +2342,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		this.treeViewEnabled = this._lastTreeViewEnabledBeforeDestroyed;
 		delete this._lastTreeViewEnabledBeforeDestroyed;
 
+		this.updateFloatingTabbar(this.kTABBAR_UPDATE_BY_RESET);
+
 		this.startRendering();
 	},
  
@@ -4738,6 +4740,27 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		var isContentResize = resizedTopFrame == this.mTabBrowser.contentWindow;
 		var isChromeResize = resizedTopFrame == this.window;
 
+		if (isChromeResize && aEvent.originalTarget != resizedTopFrame) {
+			// ignore resizing of sub frames in "position:fixed" box
+			let target = aEvent.target;
+			try {
+				let node = target.QueryInterface(Ci.nsIInterfaceRequestor)
+								.getInterface(Ci.nsIWebNavigation)
+								.QueryInterface(Ci.nsIDocShell)
+								.chromeEventHandler;
+				let root = node.ownerDocument.documentElement;
+				while (node && node != root) {
+					if (node.boxObject && !node.boxObject.parentBox) {
+						isChromeResize = false;
+						break;
+					}
+					node = node.parentNode;
+				}
+			}
+			catch(e) {
+			}
+		}
+
 		// Ignore events when a background tab raises to the foreground.
 		if (isContentResize && this._lastTabbarPlaceholderSize) {
 			let newSize = this.getTabbarPlaceholderSize();
@@ -5526,7 +5549,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		}
 
 		var self = this;
-		var CSSTransitionEnabled = ('Transition' in aTab.style || 'MozTransition' in aTab.style);
+		var CSSTransitionEnabled = ('transition' in aTab.style || 'MozTransition' in aTab.style);
 		if (CSSTransitionEnabled) {
 			aTab.__treestyletab__updateTabIndentTask = function(aTime, aBeginning, aChange, aDuration) {
 				delete aTab.__treestyletab__updateTabIndentTask;
@@ -6120,7 +6143,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 
 		aTab.setAttribute(this.kCOLLAPSING_PHASE, aCollapsed ? this.kCOLLAPSING_PHASE_TO_BE_COLLAPSED : this.kCOLLAPSING_PHASE_TO_BE_EXPANDED );
 
-		var CSSTransitionEnabled = ('Transition' in aTab.style || 'MozTransition' in aTab.style);
+		var CSSTransitionEnabled = ('transition' in aTab.style || 'MozTransition' in aTab.style);
 
 		var maxMargin;
 		var offsetAttr;

@@ -35,6 +35,8 @@
 
 const EXPORTED_SYMBOLS = ['FullscreenObserver']; 
 
+Components.utils.import('resource://treestyletab-modules/utils.js');
+
 function FullscreenObserver(aWindow) {
 	this.window = aWindow;
 	this.init();
@@ -53,7 +55,10 @@ FullscreenObserver.prototype = {
 		this.observer = new this.MutationObserver((function(aMutations, aObserver) {
 			this.onMutation(aMutations, aObserver);
 		}).bind(this));
-		this.observer.observe(this.window.document.documentElement, { attributes : true });
+		this.observer.observe(this.window.document.documentElement, {
+			attributes      : true,
+			attributeFilter : ['sizemode']
+		});
 
 		this.onSizeModeChange();
 	},
@@ -69,14 +74,9 @@ FullscreenObserver.prototype = {
 
 	onMutation : function FullscreenObserver_onMutation(aMutations, aObserver) 
 	{
-		aMutations.forEach(function(aMutation) {
-			if (aMutation.type != 'attributes')
-				return;
-			if (aMutation.attributeName == 'sizemode')
-				this.window.setTimeout((function() {
-					this.onSizeModeChange();
-				}).bind(this), 10);
-		}, this);
+		this.window.setTimeout((function() {
+			this.onSizeModeChange();
+		}).bind(this), 10);
 	},
 
 	onSizeModeChange : function FullscreenObserver_onSizeModeChange()
@@ -86,7 +86,10 @@ FullscreenObserver.prototype = {
 		if (d.documentElement.getAttribute('sizemode') != 'fullscreen')
 			return;
 
-		if (!w.FullScreen.useLionFullScreen) { // see https://github.com/piroor/treestyletab/issues/645
+		if (
+			!w.FullScreen.useLionFullScreen && // see https://github.com/piroor/treestyletab/issues/645
+			TreeStyleTabUtils.prefs.getPref('browser.fullscreen.autohide') // see https://github.com/piroor/treestyletab/issues/717
+			) {
 			let toolbox = w.gNavToolbox;
 			toolbox.style.marginTop = -toolbox.getBoundingClientRect().height + 'px';
 		}

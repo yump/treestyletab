@@ -1,6 +1,20 @@
 # History
 
  - master/HEAD
+ - 0.14.2014051101
+   * Don't hide the toolbar in the full screen mode, if `browser.fullscreen.autohide` is `false`.
+ - 0.14.2014051001
+   * Show the navigation toolbar and the "private browsing" indicator in the titlebar correctly, on OS X. (regression)
+   * Don't darken colors of websites with white background, in "auto hide tab bar" mode.
+   * [Czech locale is added by Vlastimil Ovčáčík. Thanks!](https://github.com/piroor/treestyletab/pull/714)
+ - 0.14.2014050601
+   * Allow to hide the title bar if Tabs on Bottom addon is installed.
+   * Open new tabs by [Tile Tabs](https://addons.mozilla.org/firefox/addon/tile-tabs/) as next sibling tab.
+ - 0.14.2014050102
+   * Works with Unified Sidebar correctly, in the "auto shrink" mode. (regression)
+ - 0.14.2014050101
+   * Works on Nightly 32.0a1 again.
+   * Hide pinned tabs completely on DOM full-screen mode.
  - 0.14.2014043001
    * Better compatibility with No Script 2.6.8.20.
  - 0.14.2014042701

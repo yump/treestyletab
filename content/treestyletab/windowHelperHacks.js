@@ -1166,6 +1166,47 @@ TreeStyleTabWindowHelper.overrideExtensionsAfterBrowserInit = function TSTWH_ove
 		);
 	}
 
+	// Tile Tabs
+	// https://addons.mozilla.org/firefox/addon/tile-tabs/
+	if ('tileTabs' in window &&
+		TreeStyleTabUtils.getTreePref('compatibility.TileTabs')) {
+		if ('allocateTab' in window.tileTabs)
+			eval('tileTabs.allocateTab = '+
+				tileTabs.allocateTab.toSource().replace(
+					/(tab = gBrowser.addTab)/g,
+					'TreeStyleTabService.readyToOpenNextSiblingTabNow(); $1'
+				)
+			);
+		if ('doClickBrowser' in window.tileTabs)
+			eval('tileTabs.doClickBrowser = '+
+				tileTabs.doClickBrowser.toSource().replace(
+					/(newTab = gBrowser.loadOneTab)/g,
+					'TreeStyleTabService.readyToOpenNextSiblingTabNow(); $1'
+				)
+			);
+		if ('doDropBrowserTile' in window.tileTabs)
+			eval('tileTabs.doDropBrowserTile = '+
+				tileTabs.doDropBrowserTile.toSource().replace(
+					/(tab = gBrowser.loadOneTab)/g,
+					'TreeStyleTabService.readyToOpenNextSiblingTabNow(), $1'
+				)
+			);
+		if ('menuActions' in window.tileTabs)
+			eval('tileTabs.menuActions = '+
+				tileTabs.menuActions.toSource().replace(
+					/(tab = gBrowser.loadOneTab)/g,
+					'TreeStyleTabService.readyToOpenNextSiblingTabNow(), $1'
+				)
+			);
+		if ('applyLayoutString' in window.tileTabs)
+			eval('tileTabs.applyLayoutString = '+
+				tileTabs.applyLayoutString.toSource().replace(
+					/(tab = gBrowser.loadOneTab)/g,
+					'TreeStyleTabService.readyToOpenNextSiblingTabNow(), $1'
+				)
+			);
+	}
+
 	window.setTimeout(function(aSelf) {
 		aSelf.overrideExtensionsDelayed();
 	}, 0, this);
