@@ -30,6 +30,13 @@ var TreeStyleTabWindowHelper = {
 			eval(target+' = '+source.replace(
 				'gBrowser.swapBrowsersAndCloseOther(gBrowser.selectedTab, uriToLoad);',
 				'if (!TreeStyleTabService.tearOffSubtreeFromRemote()) { $& }'
+			).replace(
+				// Workaround for https://github.com/piroor/treestyletab/issues/741
+				// After the function is updated by TST, reassignment of a global variable raises an error like:
+				// > System JS : ERROR chrome://treestyletab/content/windowHelper.js line 30 > eval:130 - TypeError: can't redefine non-configurable property 'gBidiUI'
+				// If I access it as a property of the global object, the error doesn't appear.
+				/([^\.])\bgBidiUI =/,
+				'$1window.gBidiUI ='
 			));
 		}
 
@@ -53,10 +60,8 @@ var TreeStyleTabWindowHelper = {
 		if ('BrowserOpenTab' in window) {
 			eval('window.BrowserOpenTab = '+
 				window.BrowserOpenTab.toSource().replace(
-					// loadOneTab => Firefox 10 or olders
-					// openUILinkIn => Firefox 11 or later
-					/(gBrowser\.loadOneTab\(|openUILinkIn\(.+\,\s*"tab"\))/,
-					'gBrowser.treeStyleTab.onBeforeNewTabCommand(); $1'
+					'openUILinkIn(',
+					'gBrowser.treeStyleTab.onBeforeNewTabCommand(); $&'
 				)
 			);
 		}
@@ -191,23 +196,14 @@ var TreeStyleTabWindowHelper = {
 			)
 		);
 
-		if ('BrowserSearch' in window) {
-			if ('_loadSearch' in BrowserSearch) {
-				eval('BrowserSearch._loadSearch = '+
-					BrowserSearch._loadSearch.toSource().replace(
-						'openLinkIn(',
-						'TreeStyleTabService.onBeforeBrowserSearch(arguments[0], useNewTab); $&'
-					)
-				);
-			}
-			else if ('loadSearch' in BrowserSearch) { // Firefox 24 and olders
-				eval('BrowserSearch.loadSearch = '+
-					BrowserSearch.loadSearch.toSource().replace(
-						'openLinkIn(',
-						'TreeStyleTabService.onBeforeBrowserSearch(arguments[0], useNewTab); $&'
-					)
-				);
-			}
+		if ('BrowserSearch' in window &&
+			'_loadSearch' in BrowserSearch) {
+			eval('BrowserSearch._loadSearch = '+
+				BrowserSearch._loadSearch.toSource().replace(
+					'openLinkIn(',
+					'TreeStyleTabService.onBeforeBrowserSearch(arguments[0], useNewTab); $&'
+				)
+			);
 		}
 
 		if ('openLinkIn' in window) {

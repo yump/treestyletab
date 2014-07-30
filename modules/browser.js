@@ -520,13 +520,6 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 
 		var baseX = this.tabStrip.boxObject.screenX - this.document.documentElement.boxObject.screenX;
 
-		/**
-		 * Hacks for Firefox 9 or olders.
-		 * In a box with "direction: rtr", we have to position tabs
-		 * by margin-right, because the basic position becomes
-		 * "top-right" instead of "top-left".
-		 */
-		var remainder = maxWidth - (maxCol * width);
 		var shrunkenOffset = (this.position == 'right' && tabbarPlaceHolderWidth) ?
 								tabbarWidth - tabbarPlaceHolderWidth :
 								0 ;
@@ -967,35 +960,6 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 
 		if (!aTab.linkedBrowser.__treestyletab__toBeRestored)
 			aTab.linkedBrowser.__treestyletab__toBeRestored = utils.isTabNotRestoredYet(aTab);
-
-		/**
-		 * XXX Dirty hack for Firefox 28 and older, because
-		 * there is no way to know when the tab is readied to be restored...
-		 */
-		var b = aTab.linkedBrowser;
-		if (!utils.shouldUseMessageManager && !b.__treestyletab__stop) {
-			let self = this;
-			b.__treestyletab__stop = b.stop;
-			b.stop = function TSTBrowser_stopHook(...aArgs) {
-				try {
-					var stack = Components.stack;
-					while (stack)
-					{
-						if (stack.name == 'sss_restoreHistoryPrecursor' ||
-							stack.name == 'ssi_restoreHistoryPrecursor' ||
-							stack.filename == 'resource:///modules/sessionstore/SessionStore.jsm') {
-							self.onRestoreTabContentStarted(aTab);
-							break;
-						}
-						stack = stack.caller;
-					}
-				}
-				catch(e) {
-					dump(e+'\n'+e.stack+'\n');
-				}
-				return this.__treestyletab__stop.apply(this, aArgs);
-			};
-		}
 
 		this.initTabAttributes(aTab);
 		this.initTabContents(aTab);
@@ -3312,6 +3276,18 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		// twisty vanished after the tab is moved!!
 		this.initTabContents(tab);
 
+		// On Firefox 29, 30 and laters, reopened (restored) tab can be
+		// placed in wrong place, because "TabMove" event fires before
+		// "SSTabRestoring" event and "kINSERT_BEFORE" information is
+		// unexpectedly cleared. So now I simulate the "SSTabRestoring"
+		// event here.
+		// See: https://github.com/piroor/treestyletab/issues/676#issuecomment-47700158
+		if (tab.__SS_extdata) {
+			let storedId = tab.__SS_extdata[this.kID]; // getTabValue() doesn't get the value!
+			if (storedId && tab.getAttribute(this.kID) != storedId)
+				this.onTabRestoring(aEvent);
+		}
+
 		if (this.hasChildTabs(tab) && !this.subTreeMovingCount) {
 			this.moveTabSubtreeTo(tab, tab._tPos);
 		}
@@ -4049,7 +4025,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		var newPos = -1;
 		if (parentOfNext) {
 			let descendants = this.getDescendantTabs(parentOfNext);
-			newPos = descendants[descendants.length-1]._tPos;
+			if (descendants.length)
+				newPos = descendants[descendants.length-1]._tPos;
 		}
 		else if (aNextTab) {
 			newPos = aNextTab._tPos;
@@ -6626,19 +6603,16 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		var level = utils.getTreePref('restoreTree.level');
 
 		var tabs = this.getAllTabs(this.mTabBrowser);
-		var tabsToRestore = 0;
+		var tabsToRestore = 0; // it is the number of pending tabs.
 		if (utils.SessionStoreInternal &&
 			utils.SessionStoreInternal._browserEpochs) {
-			// for Firefox 29 and later
-			// (after https://bugzilla.mozilla.org/show_bug.cgi?id=942374)
-			var browserEpochs = utils.SessionStoreInternal._browserEpochs;
+			let browserEpochs = utils.SessionStoreInternal._browserEpochs;
 			tabsToRestore = tabs.filter(function(aTab) {
 				return browserEpochs.has(aTab.linkedBrowser.permanentKey);
 			}).length;
 		}
 		else {
-			// for Firefox 24 and old versions
-			tabsToRestore = this.window.__SS_tabsToRestore;
+			Components.utils.reportError(new Error('There is no property named "_browserEpochs"!!'));
 		}
 
 		dump('TSTBrowser::restoreTree\n');
@@ -6646,7 +6620,6 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		dump('  tabsToRestore = '+tabsToRestore+'\n');
 		if (
 			level <= this.kRESTORE_TREE_LEVEL_NONE ||
-			!tabsToRestore ||
 			tabsToRestore <= 1
 			)
 			return;
