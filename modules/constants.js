@@ -41,7 +41,7 @@ const TreeStyleTabConstants = Object.freeze({
 	kID                 : 'treestyletab-id',
 	kCHILDREN           : 'treestyletab-children',
 	kPARENT             : 'treestyletab-parent',
-	kANCESTOR           : 'treestyletab-ancestors',
+	kANCESTORS          : 'treestyletab-ancestors',
 	kNEST               : 'treestyletab-nest',
 	kINSERT_BEFORE      : 'treestyletab-insert-before',
 	kINSERT_AFTER       : 'treestyletab-insert-after',
@@ -202,5 +202,26 @@ const TreeStyleTabConstants = Object.freeze({
 	MAX_TABBAR_SIZE_RATIO        : 0.8,
 	DEFAULT_SHRUNKEN_WIDTH_RATIO : 0.67,
 	MIN_TABBAR_WIDTH : 24,
-	MIN_TABBAR_HEIGHT : 24
+	MIN_TABBAR_HEIGHT : 24,
+
+
+	RESTORED_TREE_COLLAPSED_STATE_LAST_STATE : -1,
+	RESTORED_TREE_COLLAPSED_STATE_COLLAPSED  : 0,
+	RESTORED_TREE_COLLAPSED_STATE_EXPANDED   : 1,
+	RESTORE_STATE_INITIAL             : 0,
+	RESTORE_STATE_READY_TO_RESTORE    : 1,
+	RESTORE_STATE_STRUCTURE_RESTORED  : 2,
+
+
+//	CONTENT_SCRIPT          : 'chrome://treestyletab/content/content-utils.js',
+	CONTENT_SCRIPT_AUTOHIDE : 'chrome://treestyletab/content/content-utils-autohide.js',
+	MESSAGE_TYPE            : 'treestyletab',
+
+	COMMAND_SHUTDOWN                : 'shutdown',
+	COMMAND_REPORT_MOUSEDOWN        : 'report-mousedown',
+	COMMAND_REPORT_MOUSEUP          : 'report-mouseup',
+	COMMAND_REPORT_MOUSEMOVE        : 'report-mousemove',
+	COMMAND_NOTIFY_AUTOHIDE_STATUS  : 'notify-autohide-status',
+	COMMAND_REQUEST_PLUGIN_AREA_EXISTENCE : 'request-plugin-area-existence',
+	COMMAND_REPORT_PLUGIN_AREA_EXISTENCE  : 'report-plugin-area-existence'
 });

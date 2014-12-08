@@ -1,10 +1,21 @@
 # History
 
  - master/HEAD
+ - 0.15.2014120101
+   * Open clicked link as a new child tab correctly, from links with `target="_blank"` in e10s mode.
+     (See also [the related bug on the bugzilla.mozilla.org](https://bugzilla.mozilla.org/show_bug.cgi?id=1098688))
+   * Re-show the tab bar correctly after exiting from the fullscreen mode.
+     [(by Xinkai. Thanks!)](https://github.com/piroor/treestyletab/pull/790)
+   * "Auto hide tab bar" feature works correctly on Firefox 35 and older versions.
+ - 0.15.2014111301
    * Drop support for Firefox 30 and older versions
+   * Works correctly on the multi-process mode (E10S).
+     * Open child tabs from links correctly, in e10s windows. [(by Nephyrin. Thanks a lot!)](https://github.com/piroor/treestyletab/pull/760)
+   * Restore tree structure with multiple trees from bookmarks correctly, even if the dummy tab is disabled.
    * Restore tab position for "Undo Close Tab" command correctly.
    * Works on Nightly 33.0a1 with the preference `dom.compartment_per_addon`=`true`.
    * Update tabbar appearance correctly, after toolbar customization.
+   * Save "parent tab" settings correctly in the bookmarks properties dialog.
    * Update fr-FR locale, by AxlMun. Thanks!
  - 0.14.2014051101
    * Don't hide the toolbar in the full screen mode, if `browser.fullscreen.autohide` is `false`.

@@ -14,7 +14,7 @@
  * The Original Code is the Tree Style Tab.
  *
  * The Initial Developer of the Original Code is YUKI "Piro" Hiroshi.
- * Portions created by the Initial Developer are Copyright (C) 2013
+ * Portions created by the Initial Developer are Copyright (C) 2014
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
@@ -33,77 +33,74 @@
  *
  * ***** END LICENSE BLOCK ******/
 
-const EXPORTED_SYMBOLS = ['FullscreenObserver']; 
+const EXPORTED_SYMBOLS = ['TabAttributesObserver']; 
 
-Components.utils.import('resource://treestyletab-modules/utils.js');
+Components.utils.import('resource://treestyletab-modules/constants.js');
 
-function FullscreenObserver(aWindow) {
-	this.window = aWindow;
+function TabAttributesObserver(aContainer, aCallback) {
+	this.container = aContainer;
+	this.callback = aCallback;
 	this.init();
 }
-FullscreenObserver.prototype = {
+TabAttributesObserver.prototype = {
 	get MutationObserver()
 	{
-		var w = this.window;
+		var w = this.container.ownerDocument.defaultView;
 		return w.MutationObserver || w.MozMutationObserver;
 	},
 
-	init : function FullscreenObserver_onInit() 
+	init : function TabAttributesObserver_onInit() 
 	{
 		if (!this.MutationObserver)
 			return;
 		this.observer = new this.MutationObserver((function(aMutations, aObserver) {
 			this.onMutation(aMutations, aObserver);
 		}).bind(this));
-		this.observer.observe(this.window.document.documentElement, {
+		this.observer.observe(this.container, {
+			childList       : false,
 			attributes      : true,
-			attributeFilter : ['sizemode']
+			subtree         : true,
+			attributeFilter : [
+				'label',
+				'visibleLabel',
+				'image'
+			]
 		});
-
-		this.onSizeModeChange();
+	},
+	onMutation : function TabAttributesObserver_onMutation(aMutations, aObserver) 
+	{
+		aMutations.forEach(function(aMutation) {
+			switch (aMutation.type)
+			{
+				case 'attributes':
+					this.onAttributeModified(aMutation, aObserver);
+					return;
+			}
+		}, this);
 	},
 
-	destroy : function FullscreenObserver_destroy()
+	destroy : function TabAttributesObserver_destroy()
 	{
 		if (this.observer) {
 			this.observer.disconnect();
 			delete this.observer;
 		}
-		delete this.window;
+		delete this.container;
 	},
 
-	onMutation : function FullscreenObserver_onMutation(aMutations, aObserver) 
+	onAttributeModified : function TabAttributesObserver_onAttributeModified(aMutation, aObserver) 
 	{
-		this.window.setTimeout((function() {
-			this.onSizeModeChange();
+		if (this.handlingAttrChange ||
+			aMutation.target.localName != 'tab')
+			return;
+
+		this.handlingAttrChange = true;
+
+		this.callback(aMutation.target);
+
+		var w = this.container.ownerDocument.defaultView;
+		w.setTimeout((function() {
+			this.handlingAttrChange = false;
 		}).bind(this), 10);
-	},
-
-	onSizeModeChange : function FullscreenObserver_onSizeModeChange()
-	{
-		var w = this.window;
-		var d = w.document;
-		if (d.documentElement.getAttribute('sizemode') != 'fullscreen')
-			return;
-
-		if (
-			!w.FullScreen.useLionFullScreen && // see https://github.com/piroor/treestyletab/issues/645
-			TreeStyleTabUtils.prefs.getPref('browser.fullscreen.autohide') // see https://github.com/piroor/treestyletab/issues/717
-			) {
-			let toolbox = w.gNavToolbox;
-			toolbox.style.marginTop = -toolbox.getBoundingClientRect().height + 'px';
-		}
-
-		var windowControls = d.getElementById('window-controls');
-		var navigationToolbar = d.getElementById('nav-bar');
-		if (!windowControls ||
-			!navigationToolbar ||
-			windowControls.parentNode == navigationToolbar ||
-			(w.gBrowser.treeStyleTab.position == 'top' && w.gBrowser.treeStyleTab.fixed))
-			return;
-
-		// the location bar is flex=1, so we should not apply it.
-		// windowControls.setAttribute('flex', '1');
-		navigationToolbar.appendChild(windowControls);
 	}
 };

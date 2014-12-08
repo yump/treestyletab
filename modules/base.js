@@ -68,8 +68,6 @@ XPCOMUtils.defineLazyGetter(this, 'autoScroll', function() {
 });
 XPCOMUtils.defineLazyModuleGetter(this, 'UninstallationListener',
   'resource://treestyletab-modules/lib/UninstallationListener.js');
-XPCOMUtils.defineLazyModuleGetter(this, 'Deferred',
-  'resource://treestyletab-modules/lib/jsdeferred.js');
 XPCOMUtils.defineLazyModuleGetter(this, 'confirmWithPopup', 'resource://treestyletab-modules/lib/confirmWithPopup.js');
 XPCOMUtils.defineLazyModuleGetter(this, 'utils', 'resource://treestyletab-modules/utils.js', 'TreeStyleTabUtils');
 
@@ -115,7 +113,6 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 	get extensions() { return extensions; },
 	get animationManager() { return animationManager; },
 	get autoScroll() { return autoScroll; },
-	get Deferred() { return Deferred; },
 	get AeroPeek() { return AeroPeek; }, // for Windows
  
 	init : function TSTBase_init() 
@@ -478,7 +475,7 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 				],
 				persistence : -1 // don't hide even if the tab is restored after the panel is shown.
 			})
-			.next(function(aButtonIndex) {
+			.then(function(aButtonIndex) {
 				if (aButtonIndex < 2) {
 					behavior |= self.kUNDO_CLOSE_SET;
 				}
@@ -540,7 +537,7 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 			};
 
 		if (task)
-			Deferred.next(function() {
+			setTimeout((function() {
 				try {
 					task();
 				}
@@ -548,8 +545,9 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 					dump(e+'\n');
 					target.removeEventListener(type, listener, false);
 					done = true;
+					this.defaultErrorHandler(e);
 				}
-			}).error(this.defaultDeferredErrorHandler);
+			}).bind(this), 0);
 
 		target.addEventListener(type, listener, false);
 
@@ -569,7 +567,7 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 		var parent = aNode.parentNode;
 		var doc = aNode.ownerDocument || aNode;
 		var view = doc.defaultView;
-		while (parent && parent instanceof Ci.nsIDOMElement)
+		while (parent && parent instanceof view.Element)
 		{
 			let position = view.getComputedStyle(parent, null).getPropertyValue('position');
 			if (position != 'static')
@@ -590,7 +588,7 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 		throw error;
 	},
   
-	defaultDeferredErrorHandler : function TSTBase_defaultDeferredErrorHandler(aError) 
+	defaultErrorHandler : function TSTBase_defaultErrorHandler(aError) 
 	{
 		if (aError.stack)
 			Cu.reportError(aError.message+'\n'+aError.stack);
@@ -738,9 +736,9 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 			}
 			else if (typeof arg == 'string')
 				type = arg;
-			else if (arg instanceof Ci.nsIDOMDocument)
+			else if (arg instanceof this.window.Document)
 				document = arg;
-			else if (arg instanceof Ci.nsIDOMEventTarget)
+			else if (arg instanceof this.window.EventTarget)
 				target = arg;
 			else
 				data = arg;
@@ -896,7 +894,7 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 		aTab.setAttribute(aKey, aValue);
 		try {
 			this.checkCachedSessionDataExpiration(aTab);
-			SessionStore.setTabValue(aTab, aKey, aValue);
+			SessionStore.setTabValue(aTab, aKey, String(aValue));
 		}
 		catch(e) {
 		}
@@ -963,11 +961,11 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 	
 	getTabStrip : function TSTBase_getTabStrip(aTabBrowser) 
 	{
-		if (!(aTabBrowser instanceof Ci.nsIDOMElement))
+		if (!(aTabBrowser instanceof this.window.Element))
 			return null;
 
 		var strip = aTabBrowser.mStrip;
-		return (strip && strip instanceof Ci.nsIDOMElement) ?
+		return (strip && strip instanceof this.window.Element) ?
 				strip :
 				this.evaluateXPath(
 					'ancestor::xul:toolbar[1]',
@@ -982,7 +980,7 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
  
 	getTabContainerBox : function TSTBase_getTabContainerBox(aTabBrowser) 
 	{
-		if (!(aTabBrowser instanceof Ci.nsIDOMElement))
+		if (!(aTabBrowser instanceof this.window.Element))
 			return null;
 
 		var strip = this.getTabStrip(aTabBrowser);
@@ -1111,8 +1109,11 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 		return null;
 	},
  
+	// this is used only for obsolete API call on non-E10S windows
 	getTabFromFrame : function TSTBase_getTabFromFrame(aFrame, aTabBrowser) 
 	{
+		if (!aFrame)
+			return null;
 		var b = aTabBrowser || this.browser;
 		var top = aFrame.top;
 		var tabs = this.getAllTabs(b);
@@ -1261,27 +1262,30 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 			this.browser ;
 	},
  
-	getFrameFromTabBrowserElements : function TSTBase_getFrameFromTabBrowserElements(aFrameOrTabBrowser) 
+	getBrowserFromTabBrowserElements : function TSTBase_getBrowserFromTabBrowserElements(aTarget) 
 	{
-		var frame = aFrameOrTabBrowser;
-		if (frame == '[object XULElement]') {
-			if (frame.localName == 'tab') {
-				frame = frame.linkedBrowser.contentWindow;
-			}
-			else if (frame.localName == 'browser') {
-				frame = frame.contentWindow;
-			}
-			else {
-				frame = this.getTabBrowserFromChild(frame);
-				if (!frame)
-					return null;
-				frame = frame.contentWindow;
-			}
-		}
-		if (!frame)
-			frame = this.browser.contentWindow;
+		var currentBrowser = this.browser.selectedTab.linkedBrowser;
+		if (!aTarget)
+			return currentBrowser;
+		if (aTarget == '[object XULElement]') {
+			if (aTarget.localName == 'tab')
+				return aTarget.linkedBrowser;
 
-		return frame;
+			if (aTarget.localName == 'browser')
+				return aTarget;
+
+			aTarget = this.getTabBrowserFromChild(aTarget);
+			if (aTarget)
+				return aTarget.selectedTab.linkedBrowser;
+			else
+				return null;
+		}
+		if (aTarget == '[object Window]' || aTarget == '[object ChromeWindow]') {
+			let tab = this.getTabFromFrame(aTarget, this.getTabBrowserFromFrame(aTarget));
+			if (tab)
+				return tab.linkedBrowser;
+		}
+		return currentBrowser;
 	},
   
 /* get tab(s) */ 
@@ -1291,7 +1295,7 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 		if (!aId)
 			return null;
 
-		if (aTabBrowserChildren && !(aTabBrowserChildren instanceof Ci.nsIDOMNode))
+		if (aTabBrowserChildren && !(aTabBrowserChildren instanceof this.window.Node))
 			aTabBrowserChildren = null;
 
 		var b = this.getTabBrowserFromChild(aTabBrowserChildren) || this.browser;
@@ -1540,18 +1544,18 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
   
 /* notify "ready to open child tab(s)" */ 
 	
-	readyToOpenChildTab : function TSTBase_readyToOpenChildTab(aFrameOrTabBrowser, aMultiple, aInsertBefore) /* PUBLIC API */ 
+	readyToOpenChildTab : function TSTBase_readyToOpenChildTab(aTabOrSomething, aMultiple, aInsertBefore) /* PUBLIC API */ 
 	{
 		if (!utils.getTreePref('autoAttach'))
 			return false;
 
-		var frame = this.getFrameFromTabBrowserElements(aFrameOrTabBrowser);
-		if (!frame)
+		var browser = this.getBrowserFromTabBrowserElements(aTabOrSomething);
+		if (!browser)
 			return false;
 
-		var ownerBrowser = this.getTabBrowserFromFrame(frame);
+		var ownerBrowser = this.getTabBrowserFromChild(browser);
 
-		var parentTab = this.getTabFromFrame(frame, ownerBrowser);
+		var parentTab = this.getTabFromBrowser(browser, ownerBrowser);
 		if (!parentTab || parentTab.getAttribute('pinned') == 'true')
 			return false;
 
@@ -1563,6 +1567,8 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 			ownerBrowser.treeStyleTab.ensureTabInitialized(parentTab);
 			refId = aInsertBefore.getAttribute(this.kID);
 		}
+
+		dump('Tree Style Tab: new child tab is requested.\n'+new Error().stack+'\n');
 
 		ownerBrowser.treeStyleTab.readiedToAttachNewTab   = true;
 		ownerBrowser.treeStyleTab.readiedToAttachMultiple = aMultiple || false ;
@@ -1580,24 +1586,28 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 	readyToOpenChildTabNow : function TSTBase_readyToOpenChildTabNow(...aArgs) /* PUBLIC API */
 	{
 		if (this.readyToOpenChildTab.apply(this, aArgs)) {
-			let self = this;
-			this.Deferred.next(function() {
-				self.stopToOpenChildTab(aArgs[0]);
-			}).error(this.defaultDeferredErrorHandler);
+			setTimeout((function() {
+				try {
+					this.stopToOpenChildTab(aArgs[0]);
+				}
+				catch(e) {
+					this.defaultErrorHandler(e);
+				}
+			}).bind(this), 0);
 			return true;
 		}
 		return false;
 	},
  
-	readyToOpenNextSiblingTab : function TSTBase_readyToOpenNextSiblingTab(aFrameOrTabBrowser) /* PUBLIC API */ 
+	readyToOpenNextSiblingTab : function TSTBase_readyToOpenNextSiblingTab(aTabOrSomething) /* PUBLIC API */ 
 	{
-		var frame = this.getFrameFromTabBrowserElements(aFrameOrTabBrowser);
-		if (!frame)
+		var browser = this.getBrowserFromTabBrowserElements(aTabOrSomething);
+		if (!browser)
 			return false;
 
-		var ownerBrowser = this.getTabBrowserFromFrame(frame);
+		var ownerBrowser = this.getTabBrowserFromChild(browser);
 
-		var tab = this.getTabFromFrame(frame, ownerBrowser);
+		var tab = this.getTabFromBrowser(browser, ownerBrowser);
 		if (!tab || tab.getAttribute('pinned') == 'true')
 			return false;
 
@@ -1632,27 +1642,31 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 	readyToOpenNextSiblingTabNow : function TSTBase_readyToOpenNextSiblingTabNow(...aArgs) /* PUBLIC API */
 	{
 		if (this.readyToOpenNextSiblingTab.apply(this, aArgs)) {
-			let self = this;
-			this.Deferred.next(function() {
-				self.stopToOpenChildTab(aArgs[0]);
-			}).error(this.defaultDeferredErrorHandler);
+			setTimeout((function() {
+				try {
+					this.stopToOpenChildTab(aArgs[0]);
+				}
+				catch(e) {
+					this.defaultErrorHandler(e);
+				}
+			}).bind(this), 0);
 			return true;
 		}
 		return false;
 	},
  
-	readyToOpenNewTabGroup : function TSTBase_readyToOpenNewTabGroup(aFrameOrTabBrowser, aTreeStructure, aExpandAllTree) /* PUBLIC API */ 
+	readyToOpenNewTabGroup : function TSTBase_readyToOpenNewTabGroup(aTabOrSomething, aTreeStructure, aExpandAllTree) /* PUBLIC API */ 
 	{
 		if (!utils.getTreePref('autoAttach'))
 			return false;
 
-		var frame = this.getFrameFromTabBrowserElements(aFrameOrTabBrowser);
-		if (!frame)
+		var browser = this.getBrowserFromTabBrowserElements(aTabOrSomething);
+		if (!browser)
 			return false;
 
-		this.stopToOpenChildTab(frame);
+		this.stopToOpenChildTab(browser);
 
-		var ownerBrowser = this.getTabBrowserFromFrame(frame);
+		var ownerBrowser = this.getTabBrowserFromChild(browser);
 		ownerBrowser.treeStyleTab.readiedToAttachNewTabGroup = true;
 		ownerBrowser.treeStyleTab.readiedToAttachMultiple    = true;
 		ownerBrowser.treeStyleTab.multipleCount              = 0;
@@ -1670,22 +1684,26 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 	{
 
 		if (this.readyToOpenNewTabGroup.apply(this, aArgs)) {
-			let self = this;
-			this.Deferred.next(function() {
-				self.stopToOpenChildTab(aArgs[0]);
-			}).error(this.defaultDeferredErrorHandler);
+			setTimeout((function() {
+				try {
+					this.stopToOpenChildTab(aArgs[0]);
+				}
+				catch(e) {
+					this.defaultErrorHandler(e);
+				}
+			}).bind(this), 0);
 			return true;
 		}
 		return false;
 	},
  
-	stopToOpenChildTab : function TSTBase_stopToOpenChildTab(aFrameOrTabBrowser) /* PUBLIC API */ 
+	stopToOpenChildTab : function TSTBase_stopToOpenChildTab(aTabOrSomething) /* PUBLIC API */ 
 	{
-		var frame = this.getFrameFromTabBrowserElements(aFrameOrTabBrowser);
-		if (!frame)
+		var browser = this.getBrowserFromTabBrowserElements(aTabOrSomething);
+		if (!browser)
 			return false;
 
-		var ownerBrowser = this.getTabBrowserFromFrame(frame);
+		var ownerBrowser = this.getTabBrowserFromChild(browser);
 		ownerBrowser.treeStyleTab.readiedToAttachNewTab      = false;
 		ownerBrowser.treeStyleTab.readiedToAttachNewTabGroup = false;
 		ownerBrowser.treeStyleTab.readiedToAttachMultiple    = false;
@@ -1698,13 +1716,13 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 		return true;
 	},
  
-	checkToOpenChildTab : function TSTBase_checkToOpenChildTab(aFrameOrTabBrowser) /* PUBLIC API */ 
+	checkToOpenChildTab : function TSTBase_checkToOpenChildTab(aTabOrSomething) /* PUBLIC API */ 
 	{
-		var frame = this.getFrameFromTabBrowserElements(aFrameOrTabBrowser);
-		if (!frame)
+		var browser = this.getBrowserFromTabBrowserElements(aTabOrSomething);
+		if (!browser)
 			return false;
 
-		var ownerBrowser = this.getTabBrowserFromFrame(frame);
+		var ownerBrowser = this.getTabBrowserFromChild(browser);
 		return !!(ownerBrowser.treeStyleTab.readiedToAttachNewTab || ownerBrowser.treeStyleTab.readiedToAttachNewTabGroup);
 	},
  
@@ -1715,11 +1733,11 @@ var TreeStyleTabBase = inherit(TreeStyleTabConstants, {
 	kNEWTAB_OPEN_AS_NEXT_SIBLING : 3,
 	readyToOpenRelatedTabAs : function TSTBase_readyToOpenRelatedTabAs(aBaseTab, aBehavior) 
 	{
-		var frame = this.getFrameFromTabBrowserElements(aBaseTab);
-		if (!frame)
+		var browser = this.getBrowserFromTabBrowserElements(aBaseTab);
+		if (!browser)
 			return;
 
-		aBaseTab = this.getTabFromFrame(frame, this.getTabBrowserFromFrame(frame));
+		aBaseTab = this.getTabFromBrowser(browser, this.getTabBrowserFromChild(browser));
 
 		switch (aBehavior)
 		{

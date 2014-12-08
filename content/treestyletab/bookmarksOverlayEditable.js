@@ -47,32 +47,36 @@ var TreeStyleTabBookmarksServiceEditable = inherit(TreeStyleTabBookmarksService,
 
 		// main browser window
 		if ('StarUI' in window) {
-			if ('_doShowEditBookmarkPanel' in StarUI) {
-				eval('StarUI._doShowEditBookmarkPanel = '+StarUI._doShowEditBookmarkPanel.toSource().replace(
+			TreeStyleTabUtils.doPatching(StarUI._doShowEditBookmarkPanel, 'StarUI._doShowEditBookmarkPanel', function(aName, aSource) {
+				return eval(aName+' = '+aSource.replace(
 					'{',
 					'{ TreeStyleTabBookmarksServiceEditable.initEditUI();'
 				));
-			}
-			if ('quitEditMode' in StarUI) {
-				eval('StarUI.quitEditMode = '+StarUI.quitEditMode.toSource().replace(
+			}, 'TreeStyleTab');
+
+			TreeStyleTabUtils.doPatching(StarUI.quitEditMode, 'StarUI.quitEditMode', function(aName, aSource) {
+				return eval(aName+' = '+aSource.replace(
 					'{',
 					'{ TreeStyleTabBookmarksServiceEditable.saveParentFor(this._itemId);'
 				));
-			}
-			if ('cancelButtonOnCommand' in StarUI) {
-				eval('StarUI.cancelButtonOnCommand = '+StarUI.cancelButtonOnCommand.toSource().replace(
+			}, 'TreeStyleTab');
+
+			TreeStyleTabUtils.doPatching(StarUI.cancelButtonOnCommand, 'StarUI.cancelButtonOnCommand', function(aName, aSource) {
+				return eval(aName+' = '+aSource.replace(
 					'{',
 					'{ TreeStyleTabBookmarksServiceEditable.canceled = true;'
 				));
-			}
+			}, 'TreeStyleTab');
 		}
 
 		// Bookmarks Property dialog
 		if ('BookmarkPropertiesPanel' in window) {
-			eval('BookmarkPropertiesPanel._endBatch = '+BookmarkPropertiesPanel._endBatch.toSource().replace(
-				'PlacesUIUtils.ptm.endBatch();',
-				'$& TreeStyleTabBookmarksServiceEditable.saveParentFor(this._itemId);'
-			));
+			TreeStyleTabUtils.doPatching(BookmarkPropertiesPanel._endBatch, 'BookmarkPropertiesPanel._endBatch', function(aName, aSource) {
+				return eval(aName+' = '+aSource.replace(
+					/(PlacesUtils\.transactionManager\.endBatch\([^)]*\);)/,
+					'$1 TreeStyleTabBookmarksServiceEditable.saveParentFor(this._itemId, true);'
+				));
+			}, 'TreeStyleTab');
 		}
 
 		// Places Organizer (Library)
@@ -118,21 +122,27 @@ var TreeStyleTabBookmarksServiceEditable = inherit(TreeStyleTabBookmarksService,
 		this.blankItem.setAttribute('label', TreeStyleTabUtils.treeBundle.getString('bookmarkProperty.parent.blank.label'));
 
 
-		eval('gEditItemOverlay._showHideRows = '+gEditItemOverlay._showHideRows.toSource().replace(
-			/(\}\)?)$/,
-			'  TreeStyleTabBookmarksServiceEditable.parentRow.collapsed = this._element("keywordRow").collapsed && this._element("folderRow").collapsed;\n' +
-			'$1'
-		));
+		TreeStyleTabUtils.doPatching(gEditItemOverlay._showHideRows, 'gEditItemOverlay._showHideRows', function(aName, aSource) {
+			return eval(aName+' = '+aSource.replace(
+				/(\}\)?)$/,
+				'  TreeStyleTabBookmarksServiceEditable.parentRow.collapsed = this._element("keywordRow").collapsed && this._element("folderRow").collapsed;\n' +
+				'$1'
+			));
+		}, 'TreeStyleTab');
 
-		eval('gEditItemOverlay.initPanel = '+gEditItemOverlay.initPanel.toSource().replace(
-			'if (this._itemType == Ci.nsINavBookmarksService.TYPE_BOOKMARK) {',
-			'$& TreeStyleTabBookmarksServiceEditable.initParentMenuList();'
-		));
+		TreeStyleTabUtils.doPatching(gEditItemOverlay.initPanel, 'gEditItemOverlay.initPanel', function(aName, aSource) {
+			return eval(aName+' = '+aSource.replace(
+				'if (this._itemType == Ci.nsINavBookmarksService.TYPE_BOOKMARK) {',
+				'$& TreeStyleTabBookmarksServiceEditable.initParentMenuList();'
+			));
+		}, 'TreeStyleTab');
 
-		eval('gEditItemOverlay.onItemMoved = '+gEditItemOverlay.onItemMoved.toSource().replace(
-			'{',
-			'$& if (aNewParent == this._getFolderIdFromMenuList()) TreeStyleTabBookmarksServiceEditable.initParentMenuList();'
-		));
+		TreeStyleTabUtils.doPatching(gEditItemOverlay.onItemMoved, 'gEditItemOverlay.onItemMoved', function(aName, aSource) {
+			return eval(aName+' = '+aSource.replace(
+				'{',
+				'$& if (aNewParent == this._getFolderIdFromMenuList()) TreeStyleTabBookmarksServiceEditable.initParentMenuList();'
+			));
+		}, 'TreeStyleTab');
 
 		this.editUIInitialized = true;
 	},
@@ -182,11 +192,19 @@ var TreeStyleTabBookmarksServiceEditable = inherit(TreeStyleTabBookmarksService,
 		var step = 10;
 		var progressiveIteration = (function() {
 			try {
-				for (let i = 0; i < step; i++)
-				{
-					aParams.onProgress();
+				if (aParams.justNow) {
+					while (true)
+					{
+						aParams.onProgress();
+					}
 				}
-				this._doProgressivelyTimers[name] = window.setTimeout(progressiveIteration, interval);
+				else {
+					for (let i = 0; i < step; i++)
+					{
+						aParams.onProgress();
+					}
+					this._doProgressivelyTimers[name] = window.setTimeout(progressiveIteration, interval);
+				}
 			}
 			catch(e if e instanceof StopIteration) {
 				aParams.onComplete();
@@ -198,7 +216,11 @@ var TreeStyleTabBookmarksServiceEditable = inherit(TreeStyleTabBookmarksService,
 				this._doProgressivelyTimers[name] = null;
 			}
 		}).bind(this);
-		this._doProgressivelyTimers[name] = window.setTimeout(progressiveIteration, interval);
+
+		if (aParams.justNow)
+			progressiveIteration();
+		else
+			this._doProgressivelyTimers[name] = window.setTimeout(progressiveIteration, interval);
 	},
 	_doProgressivelyTimers : {},
 	_createSiblingsFragment : function TSTBMEditable__createSiblingsFragment(aCurrentItem, aCallback)
@@ -294,7 +316,7 @@ var TreeStyleTabBookmarksServiceEditable = inherit(TreeStyleTabBookmarksService,
 		return this._getItemsInFolderIterator(PlacesUtils.bookmarks.getFolderIdForItem(aId));
 	},
 
-	saveParentFor : function TSTBMEditable_saveParentFor(aId)
+	saveParentFor : function TSTBMEditable_saveParentFor(aId, aJustNow)
 	{
 		var newParentId = parseInt(this.menulist.value || -1);
 		if (this.canceled || newParentId == this.getParentItem(aId)) return;
@@ -308,7 +330,8 @@ var TreeStyleTabBookmarksServiceEditable = inherit(TreeStyleTabBookmarksService,
 			},
 			onComplete : (function() {
 				this._saveParentForInternal(aId, newParentId, items);
-			}).bind(this)
+			}).bind(this),
+			justNow : aJustNow
 		});
 	},
 	_saveParentForInternal : function TSTBMEditable_saveParentForInternal(aId, aNewParentId, aItems)

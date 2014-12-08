@@ -10,7 +10,7 @@ TreeStyleTabWindowHelper.extraProperties = [
 	TreeStyleTabService.kSUBTREE_COLLAPSED,
 	TreeStyleTabService.kCHILDREN,
 	TreeStyleTabService.kPARENT,
-	TreeStyleTabService.kANCESTOR,
+	TreeStyleTabService.kANCESTORS,
 	TreeStyleTabService.kINSERT_BEFORE,
 	TreeStyleTabService.kINSERT_AFTER
 ];
@@ -66,7 +66,7 @@ TreeStyleTabWindowHelper.overrideExtensionsPreInit = function TSTWH_overrideExte
 
 					'  for (var i in info)\n' +
 					'  {\n' +
-					'    TST.SessionStore.setTabValue(tab, i, info[i]);\n' +
+					'    TST.SessionStore.setTabValue(tab, i, String(info[i]));\n' +
 					'  }\n' +
 					'  var count = 0;\n' +
 					'  window.setTimeout(function onTimeout() {\n' +
@@ -246,11 +246,9 @@ TreeStyleTabWindowHelper.overrideExtensionsPreInit = function TSTWH_overrideExte
 		globDndtb.setTheStuff &&
 		TreeStyleTabUtils.getTreePref('compatibility.DragNDropToolbars')) {
 		let reinitTabbar = function() {
-				TreeStyleTabService.stopRendering();
 				gBrowser.treeStyleTab.syncDestroyTabbar();
 				window.setTimeout(function() {
 					gBrowser.treeStyleTab.syncReinitTabbar();
-					TreeStyleTabService.startRendering();
 				}, 100);
 			};
 		globDndtb.__treestyletab__setOrder = globDndtb.setOrder;
@@ -1312,11 +1310,9 @@ TreeStyleTabWindowHelper.overrideExtensionsDelayed = function TSTWH_overrideExte
 								aEvent.attrName == 'hidden' &&
 								gBrowser.tabContainer.parentNode.id == (aEvent.newValue == 'true' ? 'toolbar-menubar' : 'personal-titlebar' )
 								) {
-								TreeStyleTabService.stopRendering();
 								gBrowser.treeStyleTab.syncDestroyTabbar();
 								window.setTimeout(function() {
 									gBrowser.treeStyleTab.syncReinitTabbar();
-									TreeStyleTabService.startRendering();
 								}, 0);
 							}
 							break;

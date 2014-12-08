@@ -14,7 +14,7 @@
  * The Original Code is the Tree Style Tab.
  *
  * The Initial Developer of the Original Code is YUKI "Piro" Hiroshi.
- * Portions created by the Initial Developer are Copyright (C) 2013
+ * Portions created by the Initial Developer are Copyright (C) 2014
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
@@ -65,7 +65,9 @@ BrowserUIShowHideObserver.prototype = {
 				'hidden',
 				'collapsed',
 				'moz-collapsed', // Used in full screen mode
-				'disablechrome'
+				'disablechrome',
+				'width',
+				'height'
 			]
 		});
 	},
@@ -101,6 +103,10 @@ BrowserUIShowHideObserver.prototype = {
 		if (this.handlingAttrChange)
 			return;
 
+		var size = this.serializeBoxSize();
+		if (this.lastSize == size)
+			return;
+
 		var TST = this.owner.browser.treeStyleTab;
 		if (
 			// I must ignore show/hide of elements managed by TST,
@@ -121,7 +127,17 @@ BrowserUIShowHideObserver.prototype = {
 
 		var w = this.box.ownerDocument.defaultView;
 		w.setTimeout((function() {
+			this.lastSize = this.serializeBoxSize();
 			this.handlingAttrChange = false;
 		}).bind(this), 10);
+	},
+
+	serializeBoxSize : function BrowserUIShowHideObserver_serializeBoxSize(aBox)
+	{
+		aBox = aBox || this.box.boxObject;
+		return JSON.stringify({
+			width  : aBox.width,
+			height : aBox.height
+		});
 	}
 };
