@@ -14,7 +14,7 @@
  * The Original Code is the Tree Style Tab.
  *
  * The Initial Developer of the Original Code is YUKI "Piro" Hiroshi.
- * Portions created by the Initial Developer are Copyright (C) 2011-2014
+ * Portions created by the Initial Developer are Copyright (C) 2011-2015
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
@@ -194,6 +194,48 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
   
 /* properties */ 
 	
+	get tabbarWidth()
+	{
+		return this.autoHide.tabbarWidth;
+	},
+	set tabbarWidth(aValue)
+	{
+		return this.autoHide.tabbarWidth = aValue;
+	},
+/* // this section will be used after autoHide feature is separated in the future...
+	get tabbarWidth()
+	{
+		var width = this.getWindowValue(this.kTABBAR_WIDTH);
+		return width === '' ?
+				utils.getTreePref('tabbar.width') :
+				parseInt(width);
+	},
+	set tabbarWidth(aValue)
+	{
+		this.setWindowValue(this.kTABBAR_WIDTH, aValue);
+		this.setPrefForActiveWindow(function() {
+			utils.setTreePref('tabbar.width', aValue);
+		});
+		return aValue;
+	},
+*/
+ 
+	get tabbarHeight()
+	{
+		var height = this.getWindowValue(this.kTABBAR_HEIGHT);
+		return height === '' ?
+				utils.getTreePref('tabbar.height') :
+				parseInt(height);
+	},
+	set tabbarHeight(aValue)
+	{
+		this.setWindowValue(this.kTABBAR_HEIGHT, aValue);
+		this.setPrefForActiveWindow(function() {
+			utils.setTreePref('tabbar.height', aValue);
+		});
+		return aValue;
+	},
+ 
 	get maxTreeLevel() 
 	{
 		return this._maxTreeLevel;
@@ -256,8 +298,48 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		return this.fixed;
 	},
  
+	set temporaryPosition(aValue)
+	{
+		var position = this.normalizeTabbarPosition(aValue);
+		if (position == this.position)
+			return position;
+
+		if ('UndoTabService' in this.window && this.window.UndoTabService.isUndoable()) {
+			var current = this.position;
+			var self = this;
+			this.window.UndoTabService.doOperation(
+				function() {
+					self._changeTabbarPosition(position, true);
+					self._temporaryPosition = aValue;
+				},
+				{
+					label  : utils.treeBundle.getString('undo_changeTabbarPosition_label'),
+					name   : 'treestyletab-changeTabbarPosition-private',
+					data   : {
+						oldPosition : current,
+						newPosition : position,
+						target      : self.mTabBrowser.id
+					}
+				}
+			);
+		}
+		else {
+			this._changeTabbarPosition(position, true);
+			this._temporaryPosition = aValue;
+		}
+		return position;
+	},
+	_temporaryPosition : null,
+ 
 	get position() /* PUBLIC API */ 
 	{
+		if (this._temporaryPosition)
+			return this._temporaryPosition;
+
+		var lastPosition = this.getWindowValue(this.kTABBAR_POSITION);
+		if (lastPosition !== '')
+			return lastPosition;
+
 		return (
 			// Don't touch to the <tabbrowser/> element before it is initialized by XBL constructor.
 			(this.windowService.preInitialized && this.browser.getAttribute(this.kTABBAR_POSITION)) ||
@@ -266,10 +348,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 	},
 	set position(aValue)
 	{
-		var position = String(aValue).toLowerCase();
-		if (!position || !/^(top|bottom|left|right)$/.test(position))
-			position = 'top';
-
+		var position = this.normalizeTabbarPosition(aValue);
 		if (position == this.position)
 			return position;
 
@@ -279,6 +358,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 			this.window.UndoTabService.doOperation(
 				function() {
 					self._changeTabbarPosition(position);
+					delete self._temporaryPosition;
 				},
 				{
 					label  : utils.treeBundle.getString('undo_changeTabbarPosition_label'),
@@ -293,10 +373,11 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		}
 		else {
 			this._changeTabbarPosition(position);
+			delete this._temporaryPosition;
 		}
 		return position;
 	},
-	_changeTabbarPosition : function TSTBrowser_changeTabbarPosition(aNewPosition)
+	_changeTabbarPosition : function TSTBrowser_changeTabbarPosition(aNewPosition, aIsTemporaryChange)
 	{
 		if (this.timers['_changeTabbarPosition'])
 			clearTimeout(this.timers['_changeTabbarPosition']);
@@ -304,7 +385,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		var oldPosition = this.position;
 		this.fireTabbarPositionEvent(true, oldPosition, aNewPosition);
 
-		this.initTabbar(aNewPosition, oldPosition);
+		this.initTabbar(aNewPosition, oldPosition, aIsTemporaryChange);
 		this.reinitAllTabs();
 
 		this.timers['_changeTabbarPosition'] = setTimeout((function() {
@@ -483,16 +564,23 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 	{
 		if (!this.windowService.preInitialized || !aTab)
 			return false;
+
 		if (aTab.getAttribute('pinned') == 'true')
 			return true;
+
 		var tabBox = this.getFutureBoxObject(aTab);
 		var barBox = this.scrollBox.boxObject;
-		return (
-			tabBox.screenX >= barBox.screenX &&
-			tabBox.screenX + tabBox.width <= barBox.screenX + barBox.width &&
-			tabBox.screenY >= barBox.screenY &&
-			tabBox.screenY + tabBox.height <= barBox.screenY + barBox.height
-		);
+
+		if (this.isVertical)
+			return (
+				tabBox.screenY >= barBox.screenY &&
+				tabBox.screenY + tabBox.height <= barBox.screenY + barBox.height
+			);
+		else
+			return (
+				tabBox.screenX >= barBox.screenX &&
+				tabBox.screenX + tabBox.width <= barBox.screenX + barBox.width
+			);
 	},
  
 	isMultiRow : function TSTBrowser_isMultiRow() 
@@ -661,25 +749,23 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		 * the tab bar larger than the floating tab bar.
 		 */
 		if (this.isVertical) {
-			let key = this.autoHide.expanded ?
-						'tabbar.width' : 'tabbar.shrunkenWidth' ;
-			let width = utils.getTreePref(key);
+			let width = this.tabbarWidth;
 			let minWidth = Math.max(this.MIN_TABBAR_WIDTH, this.scrollBox.boxObject.width);
 			if (minWidth > width) {
-				this.setPrefForActiveWindow(function() {
-					utils.setTreePref(key, minWidth);
+				this.setPrefForActiveWindow((function() {
+					this.tabbarWidth = minWidth;
 					this.updateFloatingTabbar(this.kTABBAR_UPDATE_BY_PREF_CHANGE);
-				});
+				}).bind(this));
 			}
 		}
 		else {
-			let height = utils.getTreePref('tabbar.height');
+			let height = this.tabbarHeight;
 			let minHeight = Math.max(this.MIN_TABBAR_HEIGHT, this.scrollBox.boxObject.height);
 			if (minHeight > height) {
-				this.setPrefForActiveWindow(function() {
-					utils.setTreePref('tabbar.height', minHeight);
+				this.setPrefForActiveWindow((function() {
+					this.tabbarHeight = minHeight;
 					this.updateFloatingTabbar(this.kTABBAR_UPDATE_BY_PREF_CHANGE);
-				});
+				}).bind(this));
 			}
 		}
 	},
@@ -737,7 +823,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 			b.style.backgroundColor = '';
 		}
 
-		this.initTabbar(null, this.kTABBAR_TOP);
+		this.initTabbar(null, this.kTABBAR_TOP, true);
 
 		w.addEventListener('resize', this, true);
 		w.addEventListener('beforecustomization', this, true);
@@ -780,10 +866,6 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		//   this.tabbarDNDObserver;
 		//   this.panelDNDObserver;
 		this._readyToInitDNDObservers();
-
-		// Init autohide service only if it have to be activated.
-		if (this.isAutoHide)
-			this.autoHide;
 
 		this.updateFloatingTabbar(this.kTABBAR_UPDATE_BY_INITIALIZE);
 		this.fixTooNarrowTabbar();
@@ -1251,7 +1333,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		}).bind(this), 0);
 	},
   
-	initTabbar : function TSTBrowser_initTabbar(aNewPosition, aOldPosition) 
+	initTabbar : function TSTBrowser_initTabbar(aNewPosition, aOldPosition, aIsTemporaryChange) 
 	{
 		var d = this.document;
 		var b = this.mTabBrowser;
@@ -1268,6 +1350,14 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		if (b.getAttribute('id') != 'content' &&
 			!utils.getTreePref('tabbar.position.subbrowser.enabled')) {
 			pos = this.kTABBAR_TOP;
+		}
+
+		if (!aIsTemporaryChange) {
+			let positionName = this.normalizeTabbarPosition(pos);
+			this.setWindowValue(this.kTABBAR_POSITION, positionName);
+			this.setPrefForActiveWindow(function() {
+				utils.setTreePref('tabbar.position', positionName);
+			});
 		}
 
 		aOldPosition = aOldPosition || pos;
@@ -1342,7 +1432,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 
 			this.setTabbrowserAttribute(this.kMODE, 'vertical');
 
-			let width = this.maxTabbarWidth(utils.getTreePref('tabbar.width'), b);
+			//let width = this.maxTabbarWidth(this.tabbarWidth, b);
+			let width = this.maxTabbarWidth(this.autoHide.expandedWidth, b);
 			this.setTabStripAttribute('width', width);
 			this.removeTabStripAttribute('height');
 			b.mPanelContainer.removeAttribute('height');
@@ -1488,7 +1579,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 
 		// for updateTabbarOverflow(), we should reset the "overflow" now.
 		b.mTabContainer.removeAttribute('overflow');
-		let (container = this.document.getAnonymousElementByAttribute(b.mTabContainer, 'class', 'tabs-container')) {
+		{
+			let container = this.document.getAnonymousElementByAttribute(b.mTabContainer, 'class', 'tabs-container');
 			if (container)
 				container.removeAttribute('overflow');
 		}
@@ -1550,7 +1642,6 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		strip.addEventListener('MozMouseHittest', this, true); // to block default behaviors of the tab bar
 		strip.addEventListener('mousedown',       this, true);
 		strip.addEventListener('click',           this, true);
-		strip.addEventListener('DOMMouseScroll',  this, true);
 
 		this.scrollBox.addEventListener('overflow', this, true);
 		this.scrollBox.addEventListener('underflow', this, true);
@@ -1701,7 +1792,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 			}
 			else {
 				this.fixed = false; // ensure set to the current orient
-				this.setTabStripAttribute('height', this.maxTabbarHeight(utils.getTreePref('tabbar.height'), b));
+				this.setTabStripAttribute('height', this.maxTabbarHeight(this.tabbarHeight, b));
 			}
 			if (toggleTabsOnTop) {
 				if (this.position == 'top')
@@ -1898,11 +1989,12 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 			let realSize = this.getTabbarPlaceholderSize();
 
 			let width = (this.autoHide.expanded && this.isVertical && (aReason & this.kTABBAR_UPDATE_SYNC_TO_TABBAR) ?
-							this.maxTabbarWidth(utils.getTreePref('tabbar.width')) :
+//							this.maxTabbarWidth(this.tabbarWidth) :
+							this.maxTabbarWidth(this.autoHide.expandedWidth) :
 							0
 						) || realSize.width;
 			let height = (this.autoHide.expanded && !this.isVertical && (aReason & this.kTABBAR_UPDATE_SYNC_TO_TABBAR) ?
-							this.maxTabbarHeight(utils.getTreePref('tabbar.height')) :
+							this.maxTabbarHeight(this.tabbarHeight) :
 							0
 						) || realSize.height;
 			let yOffset = pos == 'bottom' ? height - realSize.height : 0 ;
@@ -1944,6 +2036,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 			}
 
 			this.mTabBrowser.tabContainer.setAttribute('context', this.mTabBrowser.tabContextMenu.id);
+			this._updateChatbar();
 		}
 		else {
 			strip.collapsed = tabContainerBox.collapsed = collapsed;
@@ -1964,6 +2057,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 			strip.removeAttribute('layer'); // https://bugzilla.mozilla.org/show_bug.cgi?id=590468
 
 			this.mTabBrowser.tabContainer.removeAttribute('context');
+			this._resetChatbar();
 		}
 
 		if (tabContainerBox.boxObject.width)
@@ -2054,6 +2148,49 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 									vertical ? '0' :
 									box.height+'px' ;
 	},
+ 
+	get _chatbarBox()
+	{
+		var chatbar = this.document.getElementById('pinnedchats');
+		return chatbar && chatbar.innerbox;
+	},
+	_updateChatbar : function TSTBrowser_updateChatbar() 
+	{
+		var box = this._chatbarBox;
+		if (!box)
+			return;
+
+		this._resetChatbar();
+
+		var tabbarSize = this.getTabbarPlaceholderSize();
+		var splitterBox = this.splitter.boxObject;
+
+		switch (this.position)
+		{
+			case 'left':
+				box.style.marginLeft = (tabbarSize.width + splitterBox.width) + 'px';
+				break;
+
+			case 'right':
+				box.style.marginRight = (tabbarSize.width + splitterBox.width) + 'px';
+				break;
+
+			case 'bottom':
+				box.style.marginBottom = (tabbarSize.height + splitterBox.height) + 'px';
+				break;
+		}
+	},
+	_resetChatbar : function TSTBrowser_resetChatbar() 
+	{
+		var box = this._chatbarBox;
+		if (!box)
+			return;
+
+		var style = box.style;
+		style.marginLeft =
+			style.marginRight =
+			style.marginBottom = '';
+	},
   
 	updateTabbarOverflow : function TSTBrowser_updateTabbarOverflow() 
 	{
@@ -2102,7 +2239,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
   
 	destroy : function TSTBrowser_destroy() 
 	{
-		this.animationManager.removeTask(this.smoothScrollTask);
+		this.stopSmoothScroll();
 
 		Object.keys(this.timers).forEach(function(key) {
 			if (!this.timers[key])
@@ -2230,7 +2367,6 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		strip.removeEventListener('MozMouseHittest', this, true);
 		strip.removeEventListener('mousedown',       this, true);
 		strip.removeEventListener('click',           this, true);
-		strip.removeEventListener('DOMMouseScroll',  this, true);
 
 		this.scrollBox.removeEventListener('overflow', this, true);
 		this.scrollBox.removeEventListener('underflow', this, true);
@@ -2238,24 +2374,18 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
  
 	saveCurrentState : function TSTBrowser_saveCurrentState() 
 	{
-		this.autoHide.saveCurrentState();
-
 		var b = this.mTabBrowser;
 		var floatingBox = this.getTabStrip(b).boxObject;
 		var fixedBox = (this.tabStripPlaceHolder || this.getTabStrip(b)).boxObject;
 		var prefs = {
 				'tabbar.fixed.horizontal' : b.getAttribute(this.kFIXED+'-horizontal') == 'true',
-				'tabbar.fixed.vertical'   : b.getAttribute(this.kFIXED+'-vertical') == 'true',
-				'tabbar.width'            : this.isVertical && this.autoHide.expanded && floatingBox.width ? floatingBox.width : void(0),
-				'tabbar.shrunkenWidth'    : this.isVertical && !this.autoHide.expanded && fixedBox.width ? fixedBox.width : void(0),
-				'tabbar.height'           : !this.isVertical && this.autoHide.expanded && floatingBox.height ? floatingBox.height : void(0)
+				'tabbar.fixed.vertical'   : b.getAttribute(this.kFIXED+'-vertical') == 'true'
 			};
 		for (var i in prefs)
 		{
 			if (prefs[i] !== void(0) && utils.getTreePref(i) != prefs[i])
 				utils.setTreePref(i, prefs[i]);
 		}
-		this.position = this.position;
 	},
    
 /* toolbar customization */ 
@@ -2274,7 +2404,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 				this.window,
 				100,
 				function() {
-					self.position = 'top';
+					self.temporaryPosition = 'top';
 				}
 			);
 		}
@@ -2528,7 +2658,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 				return;
 
 			case 'extensions.treestyletab.tabbar.autoShow.mousemove':
-				let (toggler = this.document.getAnonymousElementByAttribute(b, 'class', this.kTABBAR_TOGGLER)) {
+				{
+					let toggler = this.document.getAnonymousElementByAttribute(b, 'class', this.kTABBAR_TOGGLER);
 					if (toggler) {
 						if (value)
 							toggler.removeAttribute('hidden');
@@ -2717,9 +2848,6 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 			case 'mousedown':
 				return this.onMouseDown(aEvent);
 
-			case 'DOMMouseScroll':
-				return this.onDOMMouseScroll(aEvent);
-
 			case 'scroll':
 				return this.onScroll(aEvent);
 
@@ -2734,7 +2862,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 					this._initTooltipManager();
 				if (!this._DNDObserversInitialized)
 					this._initDNDObservers();
-				let (tab = aEvent.target) {
+				{
+					let tab = aEvent.target;
 					if (tab.__treestyletab__twistyHoverTimer)
 						this.window.clearTimeout(tab.__treestyletab__twistyHoverTimer);
 					if (this.isEventFiredOnTwisty(aEvent)) {
@@ -2748,7 +2877,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 				return;
 
 			case 'mouseout':
-				let (tab = aEvent.target) {
+				{
+					let tab = aEvent.target;
 					if (tab.__treestyletab__twistyHoverTimer) {
 						this.window.clearTimeout(tab.__treestyletab__twistyHoverTimer);
 						delete tab.__treestyletab__twistyHoverTimer;
@@ -2822,14 +2952,16 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		var lastX = this.lastScrollX;
 		var lastY = this.lastScrollY;
 		this.clearLastScrollPosition();
-		if (!this.smoothScrollTask &&
-			!this.scrollBox._smoothScrollTimer) { // don't restore scroll position if another scroll is already running.
-			let x = {}, y = {};
-			let scrollBoxObject = this.scrollBoxObject;
-			scrollBoxObject.getPosition(x, y);
-			if (x.value != lastX || y.value != lastY)
-				scrollBoxObject.scrollTo(lastX, lastY);
-		}
+
+		// don't restore scroll position if another scroll is already running.
+		if (this.isSmoothScrolling())
+			return;
+
+		let x = {}, y = {};
+		let scrollBoxObject = this.scrollBoxObject;
+		scrollBoxObject.getPosition(x, y);
+		if (x.value != lastX || y.value != lastY)
+			scrollBoxObject.scrollTo(lastX, lastY);
 	},
  
 	clearLastScrollPosition : function TSTBrowser_clearLastScrollPosition() 
@@ -2852,10 +2984,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
  
 	cancelPerformingAutoScroll : function TSTBrowser_cancelPerformingAutoScroll(aOnlyCancel) 
 	{
-		if (this.smoothScrollTask) {
-			this.animationManager.removeTask(this.smoothScrollTask);
-			this.smoothScrollTask = null;
-		}
+		this.stopSmoothScroll();
 		this.clearLastScrollPosition();
 
 		if (this.timers['cancelPerformingAutoScroll']) {
@@ -3733,7 +3862,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		}).bind(this), 0);
 
 		if (!tab.selected &&
-			this.mTabBrowser.currentURI.spec == 'about:sessionrestore') {
+			this.mTabBrowser.currentURI.spec == 'about:sessionrestore' &&
+			this.mTabBrowser.selectedBrowser.getAttribute('remote') != 'true') {
 			// because this is a chrome document, E10S is not applied.
 			let frame = this.mTabBrowser.contentWindow;
 			frame = frame.wrappedJSObject || frame;
@@ -4101,7 +4231,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 			return;
 
 		var restoringChildren = aTab.getAttribute(this.kCHILDREN_RESTORING);
-		if (!restoringChildren) return;
+		if (!restoringChildren)
+			return;
 
 		var children = aTab.getAttribute(this.kCHILDREN);
 		if (restoringChildren != children) {
@@ -4714,11 +4845,6 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		}
 	},
  
-	onDOMMouseScroll : function TSTBrowser_onDOMMouseScroll(aEvent) 
-	{
-		this.cancelPerformingAutoScroll();
-	},
- 
 	onScroll : function TSTBrowser_onScroll(aEvent) 
 	{
 		// restore scroll position when a tab is closed.
@@ -4762,7 +4888,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 
 		var resizedTopFrame = aEvent.originalTarget.top;
 		// for E10S tabs, isContentResize is always false.
-		var isContentResize = resizedTopFrame == this.mTabBrowser.contentWindow;
+		var isInProcessTab = this.mTabBrowser.selectedBrowser.getAttribute('remote') != 'true';
+		var isContentResize = isInProcessTab && resizedTopFrame == this.mTabBrowser.contentWindow;
 		var isChromeResize = resizedTopFrame == this.window;
 
 		if (isChromeResize && aEvent.originalTarget != resizedTopFrame) {
@@ -5068,15 +5195,16 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 	resetTabbarSize : function TSTBrowser_resetTabbarSize() 
 	{
 		if (this.isVertical) {
-			utils.setTreePref('tabbar.shrunkenWidth', utils.getTreePref('tabbar.shrunkenWidth.default'));
-			utils.setTreePref('tabbar.width', utils.getTreePref('tabbar.width.default'));
+			//this.tabbarWidth = utils.getTreePref('tabbar.width.default');
+			this.autoHide.resetWidth();
 		}
 		else {
-			utils.setTreePref('tabbar.height', utils.getTreePref('tabbar.height.default'));
+			this.tabbarHeight = utils.getTreePref('tabbar.height.default');
 			let tabContainerBox = this.getTabContainerBox(this.mTabBrowser);
 			tabContainerBox.removeAttribute('height');
 			this._tabStripPlaceHolder.height = tabContainerBox.boxObject.height;
 		}
+
 		this.updateFloatingTabbar(this.kTABBAR_UPDATE_BY_RESET);
 	},
  
@@ -6175,7 +6303,8 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		var maxMargin;
 		var offsetAttr;
 		var collapseProp = 'margin-'+this.collapseTarget;
-		let (firstTab = this.getFirstNormalTab(this.mTabBrowser)) {
+		{
+			let firstTab = this.getFirstNormalTab(this.mTabBrowser);
 			if (this.isVertical) {
 				maxMargin = firstTab.boxObject.height;
 				offsetAttr = this.kY_OFFSET;
@@ -6411,13 +6540,13 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
   
 /* scroll */ 
 	
-	scrollTo : function TSTBrowser_scrollTo(aEndX, aEndY) 
+	scrollTo : function TSTBrowser_scrollTo(aEndX, aEndY, aTargetElement) 
 	{
 		if (this.timers['cancelPerformingAutoScroll'])
 			return;
 
 		if (this.animationEnabled || this.smoothScrollEnabled) {
-			this.smoothScrollTo(aEndX, aEndY);
+			this.smoothScrollTo(aEndX, aEndY, null, aTargetElement);
 		}
 		else {
 			try {
@@ -6429,7 +6558,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		}
 	},
 	
-	smoothScrollTo : function TSTBrowser_smoothScrollTo(aEndX, aEndY, aDuration) 
+	smoothScrollTo : function TSTBrowser_smoothScrollTo(aEndX, aEndY, aDuration, aTargetElement) 
 	{
 		this.cancelPerformingAutoScroll(true);
 
@@ -6441,6 +6570,14 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		var startY = y.value;
 		var deltaX = aEndX - startX;
 		var deltaY = aEndY - startY;
+
+		// Use Firefox's native smooth scroll if possible
+		// because it can be accelerated.
+		if (typeof this.scrollBox._smoothScrollByPixels == 'function') {
+			let amountToScroll = this.isVertical ? deltaY : deltaX ;
+			return this.scrollBox._smoothScrollByPixels(amountToScroll, aTargetElement);
+		}
+		// Otherwise fallback to TST's custom one.
 
 		var arrowscrollbox = scrollBoxObject.element.parentNode;
 		if (
@@ -6508,7 +6645,7 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		};
 		this.animationManager.addTask(
 			this.smoothScrollTask,
-			0, 0, this.smoothScrollDuration || aDuration, this.window
+			0, 0, aDuration || this.smoothScrollDuration, this.window
 		);
 	},
 	_getMaxScrollSize : function(aScrollBoxObject) {
@@ -6521,10 +6658,38 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 		return [maxX, maxY];
 	},
 	smoothScrollTask : null,
+ 
+	isSmoothScrolling : function TSTBrowser_isSmoothScrolling() 
+	{
+		return Boolean(
+			// Firefox's native scroll
+			this.scrollBox._smoothScrollTimer ||
+			// TST's custom one
+			this.smoothScrollTask
+		);
+	},
+ 
+	stopSmoothScroll : function TSTBrowser_stopSmoothScroll() 
+	{
+		// Firefox's native scroll
+		if (typeof this.scrollBox._stopSmoothScroll == 'function')
+			this.scrollBox._stopSmoothScroll();
+
+		// TST's custom one
+		if (this.smoothScrollTask) {
+			this.animationManager.removeTask(this.smoothScrollTask);
+			this.smoothScrollTask = null;
+		}
+	},
   
 	scrollToTab : function TSTBrowser_scrollToTab(aTab, aOnlyWhenCurrentTabIsInViewport) 
 	{
-		if (!aTab || !aTab.parentNode || this.isTabInViewport(aTab))
+		if (!aTab || !aTab.parentNode)
+			return;
+
+		this.cancelPerformingAutoScroll(true);
+
+		if (this.isTabInViewport(aTab))
 			return;
 
 		var b = this.mTabBrowser;
@@ -6556,25 +6721,34 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 				return;
 		}
 
-		this.scrollTo(targetX, targetY);
+		this.scrollTo(targetX, targetY, aTab);
 	},
  
 	scrollToTabSubtree : function TSTBrowser_scrollToTabSubtree(aTab) 
 	{
 		if (!aTab.parentNode) // do nothing for closed tab!
 			return;
-		var b          = this.mTabBrowser;
-		var descendant = this.getDescendantTabs(aTab);
-		var parentTabBox = aTab.boxObject;
+		var descendants = this.getDescendantTabs(aTab);
+		return this.scrollToTabs([aTab].concat(descendants));
+	},
+ 
+	scrollToTabs : function TSTBrowser_scrollToTabs(aTabs) 
+	{
+		var firstTab = aTabs[0];
+		if (!firstTab.parentNode) // do nothing for closed tab!
+			return;
+
+		var b            = this.mTabBrowser;
+		var parentTabBox = this.getFutureBoxObject(firstTab);
 
 		var containerPosition = this.tabStrip.boxObject[this.screenPositionProp];
 		var containerSize     = this.tabStrip.boxObject[this.sizeProp];
 		var parentPosition    = parentTabBox[this.screenPositionProp];
 
-		var lastVisible = aTab;
-		for (let i = descendant.length-1; i > -1; i--)
+		var lastVisible = firstTab;
+		for (let i = aTabs.length-1; i > -1; i--)
 		{
-			let tab = descendant[i];
+			let tab = aTabs[i];
 			if (this.isCollapsed(tab))
 				continue;
 
@@ -6586,26 +6760,31 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 			break;
 		}
 
-		if (this.isTabInViewport(aTab) && this.isTabInViewport(lastVisible))
+		this.cancelPerformingAutoScroll(true);
+
+		if (this.isTabInViewport(firstTab) && this.isTabInViewport(lastVisible))
 			return;
 
-		var lastPosition = lastVisible.boxObject[this.screenPositionProp];
-		var tabSize      = lastVisible.boxObject[this.sizeProp];
+		var lastVisibleBox = this.getFutureBoxObject(lastVisible);
+		var lastPosition = lastVisibleBox[this.screenPositionProp];
+		var tabSize      = lastVisibleBox[this.sizeProp];
 
-		if (lastPosition - parentPosition + tabSize > containerSize - tabSize) { // out of screen
+		var treeHeight = lastPosition - parentPosition + tabSize;
+		var treeIsLargerThanViewport = treeHeight > containerSize - tabSize;
+		if (treeIsLargerThanViewport) {
 			var endPos = parentPosition - this.getFirstNormalTab(b).boxObject[this.screenPositionProp] - tabSize * 0.5;
 			var endX = this.isVertical ? 0 : endPos ;
 			var endY = this.isVertical ? endPos : 0 ;
 			this.scrollTo(endX, endY);
 		}
-		else if (!this.isTabInViewport(aTab) && this.isTabInViewport(lastVisible)) {
-			this.scrollToTab(aTab);
+		else if (!this.isTabInViewport(firstTab) && this.isTabInViewport(lastVisible)) {
+			this.scrollToTab(firstTab);
 		}
-		else if (this.isTabInViewport(aTab) && !this.isTabInViewport(lastVisible)) {
+		else if (this.isTabInViewport(firstTab) && !this.isTabInViewport(lastVisible)) {
 			this.scrollToTab(lastVisible);
 		}
 		else if (parentPosition < containerPosition) {
-			this.scrollToTab(aTab);
+			this.scrollToTab(firstTab);
 		}
 		else {
 			this.scrollToTab(lastVisible);
@@ -6827,10 +7006,6 @@ TreeStyleTabBrowser.prototype = inherit(TreeStyleTabWindow.prototype, {
 	get lastMouseDownTarget() { return this.autoHide.lastMouseDownTarget; },
 	set lastMouseDownTarget(aValue) { return this.autoHide.lastMouseDownTarget = aValue; },
 
-	get tabbarWidth() { return this.autoHide.width; },
-	set tabbarWidth(aValue) { return this.autoHide.widthwidth = aValue; },
-	get tabbarHeight() { return this.autoHide.height; },
-	set tabbarHeight(aValue) { return this.autoHide.height = aValue; },
 	get splitterWidth() { return this.autoHide.splitterWidth; },
 
 	get autoHideShown() { return this.autoHide.expanded; },

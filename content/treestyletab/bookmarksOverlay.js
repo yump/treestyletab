@@ -233,16 +233,17 @@ var TreeStyleTabBookmarksService = inherit(TreeStyleTabService, {
 			var sv = this;
 			with (ns) {
 
-			let (method = (TreeStyleTabUtils.getTreePref('compatibility.TabUtilities') && PlacesUIUtils.TU__openTabset) ?
+			{
+				let method = (TreeStyleTabUtils.getTreePref('compatibility.TabUtilities') && PlacesUIUtils.TU__openTabset) ?
 							'TU__openTabset' :
-							'_openTabset') {
+							'_openTabset';
 				TreeStyleTabUtils.doPatching(PlacesUIUtils[method], 'PlacesUIUtils.'+method, function(aName, aSource) {
 					var patched = eval(aName+' = '+aSource.replace(
 						/(function[^\(]*\([^\)]+)(\))/,
 						'$1, aFolderTitle$2'
 					).replace(
 						'{',
-						'{ var TSTTreeStructure = null, TSTPreviousTabs, TSTOpenGroupBookmarkBehavior;'
+						'{ var TSTTreeStructure = null, TSTPreviousTabs, TSTTreeStructureApplied = true, TSTOpenGroupBookmarkBehavior;'
 					).replace(
 						'var urls = [];',
 						'$& var ids = [];'
@@ -257,6 +258,7 @@ var TreeStyleTabBookmarksService = inherit(TreeStyleTabService, {
 						'var TSTResult = browserWindow.TreeStyleTabBookmarksService.handleTabsOpenProcess(where, aEvent, browserWindow, ids, urls, aFolderTitle);\n' +
 						'TSTTreeStructure = TSTResult.treeStructure;\n' +
 						'TSTPreviousTabs = TSTResult.previousTabs;\n' +
+						'TSTTreeStructureApplied = TSTResult.treeStructureApplied;\n' +
 						'TSTOpenGroupBookmarkBehavior = TSTResult.behavior;\n' +
 						'if (typeof replaceCurrentTab != "undefined")\n' +
 						'  replaceCurrentTab = TSTResult.replaceCurrentTab;\n' +
@@ -265,7 +267,13 @@ var TreeStyleTabBookmarksService = inherit(TreeStyleTabService, {
 						/(\}\)?)$/,
 						'  if (TSTTreeStructure && TSTPreviousTabs) {\n' +
 						'    let tabs = browserWindow.TreeStyleTabService.getNewTabsFromPreviousTabsInfo(browserWindow.gBrowser, TSTPreviousTabs);\n' +
-						'    browserWindow.TreeStyleTabService.applyTreeStructureToTabs(tabs, TSTTreeStructure, TSTOpenGroupBookmarkBehavior & browserWindow.TreeStyleTabBookmarksService.kGROUP_BOOKMARK_EXPAND_ALL_TREE);\n' +
+						'    if (!TSTTreeStructureApplied)\n' +
+						'      browserWindow.TreeStyleTabService.applyTreeStructureToTabs(tabs, TSTTreeStructure, TSTOpenGroupBookmarkBehavior & browserWindow.TreeStyleTabBookmarksService.kGROUP_BOOKMARK_EXPAND_ALL_TREE);\n' +
+						'    if (!loadInBackground) {\n' +
+						'      browserWindow.setTimeout(function() {\n' +
+						'        browserWindow.gBrowser.treeStyleTab.scrollToTabs(tabs);\n' +
+						'      }, browserWindow.gBrowser.treeStyleTab.collapseDuration); // start scroll after expanding animation is finished\n' +
+						'    }\n' +
 						'  }\n' +
 						'$1'
 					));
@@ -275,17 +283,19 @@ var TreeStyleTabBookmarksService = inherit(TreeStyleTabService, {
 				}, 'TreeStyleTab');
 			}
 
-			let (method = (TreeStyleTabUtils.getTreePref('compatibility.TabUtilities') && PlacesUIUtils.TU_openContainerNodeInTabs) ?
+			{
+				let method = (TreeStyleTabUtils.getTreePref('compatibility.TabUtilities') && PlacesUIUtils.TU_openContainerNodeInTabs) ?
 							'TU_openContainerNodeInTabs' :
-							'openContainerNodeInTabs') {
+							'openContainerNodeInTabs';
 				TreeStyleTabUtils.doPatching(PlacesUIUtils[method], 'PlacesUIUtils.'+method, function(aName, aSource) {
 					var patched = eval(aName+' = '+aSource.replace(
 						/(this\._openTabset\([^\)]+)(\))/,
-						'let (w = "_getTopBrowserWin" in this ?\n' +
+						'{\n' +
+						'  let w = "_getTopBrowserWin" in this ?\n' +
 						'      this._getTopBrowserWin() :\n' +
 						'    "_getCurrentActiveWin" in this ?\n' +
 						'      this._getCurrentActiveWin() :\n' +
-						'      window) {\n' +
+						'      window;\n' +
 						'  let nodes = w.TreeStyleTabBookmarksService.getItemIdsForContainerNode(aNode);\n' +
 						'  for (let i in nodes) {\n' +
 						'    urlsToOpen[i].id = nodes[i];\n' +
@@ -299,19 +309,21 @@ var TreeStyleTabBookmarksService = inherit(TreeStyleTabService, {
 				}, 'TreeStyleTab');
 			}
 
-			let (method = (TreeStyleTabUtils.getTreePref('compatibility.TabUtilities') && PlacesUIUtils.TU_openURINodesInTabs) ?
+			{
+				let method = (TreeStyleTabUtils.getTreePref('compatibility.TabUtilities') && PlacesUIUtils.TU_openURINodesInTabs) ?
 							'TU_openURINodesInTabs' :
-							'openURINodesInTabs') {
+							'openURINodesInTabs';
 				TreeStyleTabUtils.doPatching(PlacesUIUtils[method], 'PlacesUIUtils.'+method, function(aName, aSource) {
 					var patched = eval(aName+' = '+aSource.replace(
 						'{',
 						'{\n' +
 						'  var TSTBS, TSTUtils;\n' +
-						'  let (w = "_getTopBrowserWin" in this ?\n' +
+						'  {\n'+
+						'    let w = "_getTopBrowserWin" in this ?\n' +
 						'        this._getTopBrowserWin() :\n' +
 						'      "_getCurrentActiveWin" in this ?\n' +
 						'        this._getCurrentActiveWin() :\n' +
-						'        window) {\n' +
+						'        window;\n' +
 						'    TSTBS = w.TreeStyleTabBookmarksService;\n' +
 						'    TSTUtils = w.TreeStyleTabUtils;\n' +
 						'    PlacesUtils = w.PlacesUtils;\n' +
@@ -379,7 +391,8 @@ var TreeStyleTabBookmarksService = inherit(TreeStyleTabService, {
 		var result = {
 				behavior      : undefined,
 				treeStructure : undefined,
-				previousTabs  : undefined
+				previousTabs  : undefined,
+				treeStructureApplied : false
 			};
 		if (
 			aEvent.type != 'drop' &&
@@ -439,14 +452,17 @@ var TreeStyleTabBookmarksService = inherit(TreeStyleTabService, {
 				}
 			}
 
+			result.treeStructure = treeStructure;
+			result.previousTabs = aBrowserWindow.TreeStyleTabService.getTabsInfo(aBrowserWindow.gBrowser);
+
 			if (TreeStyleTabUtils.getTreePref('compatibility.TMP') &&
 				'TMP_Places' in aBrowserWindow &&
 				'openGroup' in aBrowserWindow.TMP_Places) {
-				result.treeStructure = treeStructure;
-				result.previousTabs = aBrowserWindow.TreeStyleTabService.getTabsInfo(aBrowserWindow.gBrowser);
+				result.treeStructureApplied = false;
 			}
 			else {
 				sv.readyToOpenNewTabGroup(null, treeStructure, result.behavior & sv.kGROUP_BOOKMARK_EXPAND_ALL_TREE);
+				result.treeStructureApplied = true;
 			}
 		}
 		return result;

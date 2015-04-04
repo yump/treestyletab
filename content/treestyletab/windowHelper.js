@@ -20,7 +20,7 @@ var TreeStyleTabWindowHelper = {
 			}
 			else if (aSource.indexOf('gBrowser.swapBrowsersAndCloseOther') > -1) {
 				return eval(aName+' = '+aSource.replace(
-					'gBrowser.swapBrowsersAndCloseOther(gBrowser.selectedTab, uriToLoad);',
+					/gBrowser\.swapBrowsersAndCloseOther\([^)]+\);/g,
 					'if (!TreeStyleTabService.tearOffSubtreeFromRemote()) { $& }'
 				).replace(
 					// Workaround for https://github.com/piroor/treestyletab/issues/741
@@ -200,8 +200,9 @@ var TreeStyleTabWindowHelper = {
 		TreeStyleTabUtils.doPatching(window.openLinkIn, 'window.openLinkIn', function(aName, aSource) {
 			// Bug 1050447 changed this line in Fx 34 to
 			// newTab = w.gBrowser.loadOneTab(
+			// Bug 1108555 removed newTab assignment
 			return eval(aName+' = '+aSource.replace(
-				/((b|newTab = w\.gB)rowser.loadOneTab\()/g,
+				/((b|(newTab = )?w\.gB)rowser.loadOneTab\()/g,
 				'TreeStyleTabService.onBeforeOpenLinkWithTab(gBrowser.selectedTab, aFromChrome); $1'
 			));
 		}, 'TreeStyleTab');
@@ -294,12 +295,30 @@ var TreeStyleTabWindowHelper = {
 			}, 'treeStyleTab');
 		}
 
-		TreeStyleTabUtils.doPatching(window.toggleSidebar, 'window.toggleSidebar', function(aName, aSource) {
-			return eval(aName+' = '+aSource.replace(
-				'{',
-				'{ gBrowser.treeStyleTab.updateFloatingTabbar(gBrowser.treeStyleTab.kTABBAR_UPDATE_BY_TOGGLE_SIDEBAR);'
-			));
-		}, 'treeStyleTab');
+		if ('SidebarUI' in window) { // for Firefox 39 or later
+			SidebarUI.__treestyletab__show = SidebarUI.show;
+			SidebarUI.show = function(...aArgs) {
+				return this.__treestyletab__show.apply(this, aArgs)
+						.then(function(aResult) {
+							gBrowser.treeStyleTab.updateFloatingTabbar(gBrowser.treeStyleTab.kTABBAR_UPDATE_BY_TOGGLE_SIDEBAR);
+							return aResult;
+						});
+			};
+			SidebarUI.__treestyletab__hide = SidebarUI.hide;
+			SidebarUI.hide = function(...aArgs) {
+				var retVal = this.__treestyletab__hide.apply(this, aArgs);
+				gBrowser.treeStyleTab.updateFloatingTabbar(gBrowser.treeStyleTab.kTABBAR_UPDATE_BY_TOGGLE_SIDEBAR);
+				return retVal;
+			};
+		}
+		else if ('toggleSidebar' in window) { // for Firefox 38 or older
+			TreeStyleTabUtils.doPatching(window.toggleSidebar, 'window.toggleSidebar', function(aName, aSource) {
+				return eval(aName+' = '+aSource.replace(
+					'{',
+					'{ gBrowser.treeStyleTab.updateFloatingTabbar(gBrowser.treeStyleTab.kTABBAR_UPDATE_BY_TOGGLE_SIDEBAR);'
+				));
+			}, 'treeStyleTab');
+		}
 	},
 	_splitFunctionNames : function TSTWH__splitFunctionNames(aString)
 	{
@@ -329,15 +348,14 @@ var TreeStyleTabWindowHelper = {
 		var searchbar = document.getElementById('searchbar');
 		if (searchbar &&
 			searchbar.doSearch &&
-			searchbar.doSearch.toSource().toSource().indexOf('TreeStyleTabService') < 0) {
-			TreeStyleTabUtils.doPatching(searchbar.doSearch, 'searchbar.doSearch', function(aName, aSource) {
-				return eval(aName+' = '+aSource.replace(
-					/(openUILinkIn\(.+?\);)/,
-					'TreeStyleTabService.onBeforeBrowserSearch(arguments[0]);\n' +
-					'$1\n' +
-					'TreeStyleTabService.stopToOpenChildTab();'
-				));
-			}, 'TreeStyleTab');
+			!searchbar.__treestyletab__original_doSearch) {
+			searchbar.__treestyletab__original_doSearch = searchbar.doSearch;
+			searchbar.doSearch = function(...aArgs) {
+				TreeStyleTabService.onBeforeBrowserSearch(aArgs[0]);
+				var retVal = this.__treestyletab__original_doSearch.apply(this, aArgs);
+				TreeStyleTabService.stopToOpenChildTab();
+				return retVal;
+			};
 		}
 
 		var goButton = document.getElementById('urlbar-go-button');
@@ -532,26 +550,28 @@ var TreeStyleTabWindowHelper = {
 
 		/**
 		 * The default implementation fails to scroll to tab if it is expanding.
-		 * So we have to inject codes to override its effect.
+		 * So we have to override its effect.
 		 */
-		let (scrollbox = aTabBrowser.treeStyleTab.scrollBox) {
-			TreeStyleTabUtils.doPatching(scrollbox.ensureElementIsVisible, 'scrollbox.ensureElementIsVisible', function(aName, aSource) {
-				return eval(aName+' = '+aSource.replace(
-					'{',
-					'{\n' +
-					'  var treeStyleTab = TreeStyleTabService.getTabBrowserFromChild(this).treeStyleTab;\n' +
-					'  if (treeStyleTab && treeStyleTab.shouldCancelEnsureElementIsVisible())\n' +
-					'    return;\n' +
-					'  if (\n' +
-					'      treeStyleTab &&\n' +
-					'      (arguments.length == 1 || arguments[1])\n' +
-					'    )\n' +
-					'    return treeStyleTab.scrollToTab(arguments[0]);'
-				));
-			}, /treeStyleTab|ensureTabIsVisible/); // if there is a string "ensureTabIsVisible", it is replaced by Tab Mix Plus!
+		{
+			let scrollbox = aTabBrowser.treeStyleTab.scrollBox;
+				if (!scrollbox.__treestyletab__ensureElementIsVisible) {
+				scrollbox.__treestyletab__ensureElementIsVisible = scrollbox.ensureElementIsVisible;
+				scrollbox.ensureElementIsVisible = function(...aArgs) {
+					var treeStyleTab = TreeStyleTabService.getTabBrowserFromChild(this).treeStyleTab;
+					if (treeStyleTab) {
+						if (treeStyleTab.shouldCancelEnsureElementIsVisible())
+							return;
+						let shouldScrollNow = aArgs[1] === false;
+						if (treeStyleTab.animationEnabled && !shouldScrollNow)
+							return treeStyleTab.scrollToTab(aArgs[0]);
+					}
+					this.__treestyletab__ensureElementIsVisible.apply(this, aArgs);
+				};
+			}
 		}
 
-		let (popup = document.getElementById('alltabs-popup')) {
+		{
+			let popup = document.getElementById('alltabs-popup');
 			TreeStyleTabUtils.doPatching(popup._updateTabsVisibilityStatus, 'popup._updateTabsVisibilityStatus', function(aName, aSource) {
 				return eval(aName+' = '+aSource.replace(
 					'{',

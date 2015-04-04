@@ -1,6 +1,22 @@
 # History
 
  - master/HEAD
+   * Current tab is shown with highlighted color correctly at the "Plain" skin.
+   * Mouse events are correctly handled for the "auto hide" feature for tabs even if their remoteness is dynamically changed.
+ - 0.15.2015030601
+   * Width of the tab bar, position of the tab bar, and status of the "auto hide" feature are saved and restored for each window.
+   * Better compatibility with [Duplicate in Tab Context Menu addon](https://addons.mozilla.org/firefox/duplicate-in-tab-context-menu/).
+   * Better compatibility with ColorfulTabs. Annoyingly horizontal scroll of the tab bar (happend by clicking on any tab) has been solved.
+   * Isolated from obsolete `String.prototype.quote()`.
+   * Isolated from deprecated JavaScript 1.7's let blocks.
+   * Isolated from obsolete nsIPopupBoxObject interface on Firefox 36 and later.
+   * Update appearance of the tab bar correctly, after the sidebar is shown/hidden at Firefxo 39 and later.
+   * Reset z-index of vertical tabs always to prevent tabs are shown above other browser elements.
+   * Open child tabs from links correctly on Firefox 36 and later.
+   * Open child tabs from the web search bar correctly on Firefox 36 and later.
+   * Open multiple child tabs from a tab by scripts more correctly, for E10S windows.
+   * Firefox Hello's chat boxes are not placed below tabs anymore.
+   * Mouse events on the place holder shown when the tab bar is completely hidden are handled correctly to show/hide the tab bar automatically.
  - 0.15.2014120101
    * Open clicked link as a new child tab correctly, from links with `target="_blank"` in e10s mode.
      (See also [the related bug on the bugzilla.mozilla.org](https://bugzilla.mozilla.org/show_bug.cgi?id=1098688))

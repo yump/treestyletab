@@ -14,7 +14,7 @@
  * The Original Code is the Tree Style Tab.
  *
  * The Initial Developer of the Original Code is YUKI "Piro" Hiroshi.
- * Portions created by the Initial Developer are Copyright (C) 2012-2014
+ * Portions created by the Initial Developer are Copyright (C) 2012-2015
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s): YUKI "Piro" Hiroshi <piro.outsider.reflex@gmail.com>
@@ -65,6 +65,10 @@ XPCOMUtils.defineLazyModuleGetter(this, 'AutoHideWindow', 'resource://treestylet
 XPCOMUtils.defineLazyModuleGetter(this, 'TreeStyleTabThemeManager', 'resource://treestyletab-modules/themeManager.js');
 XPCOMUtils.defineLazyModuleGetter(this, 'FullscreenObserver', 'resource://treestyletab-modules/fullscreenObserver.js');
 XPCOMUtils.defineLazyModuleGetter(this, 'BrowserUIShowHideObserver', 'resource://treestyletab-modules/browserUIShowHideObserver.js');
+XPCOMUtils.defineLazyModuleGetter(this, 'ContentBridge', 'resource://treestyletab-modules/contentBridge.js');
+
+XPCOMUtils.defineLazyServiceGetter(this, 'SessionStore',
+  '@mozilla.org/browser/sessionstore;1', 'nsISessionStore');
 
 function TreeStyleTabWindow(aWindow)
 {
@@ -104,13 +108,20 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 	},
 	set position(aValue)
 	{
+		var setPosition = (function() {
+			this.setPrefForActiveWindow((function() {
+				if (this.preInitialized && this.browser.treeStyleTab)
+					this.browser.treeStyleTab.position = aValue;
+				else
+					this.base.position = aValue;
+			}).bind(this));
+		}).bind(this);
+
 		if ('UndoTabService' in this.window && this.window.UndoTabService.isUndoable()) {
-			var current = this.base.position;
+			var current = this.position;
 			var self = this;
 			this.window.UndoTabService.doOperation(
-				function() {
-					self.base.position = aValue;
-				},
+				setPosition,
 				{
 					label  : utils.treeBundle.getString('undo_changeTabbarPosition_label'),
 					name   : 'treestyletab-changeTabbarPosition',
@@ -122,7 +133,7 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 			);
 		}
 		else {
-			this.base.position = aValue;
+			setPosition();
 		}
 		return aValue;
 	},
@@ -278,14 +289,13 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 	kSEARCH_RESULT_ATTACH_IF_SELECTED : 1,
 	kSEARCH_RESULT_ATTACH_ALWAYS      : 2,
  
-	get isAutoHide() 
+	get isFullscreenAutoHide()
 	{
-		return this.window.fullScreen ?
-				(
-					prefs.getPref('browser.fullscreen.autohide') &&
-					utils.getTreePref('tabbar.autoHide.mode.fullscreen')
-				) :
-				utils.getTreePref('tabbar.autoHide.mode');
+		return Boolean(
+			this.window.fullScreen &&
+			prefs.getPref('browser.fullscreen.autohide') &&
+			utils.getTreePref('tabbar.autoHide.mode.fullscreen') != AutoHideWindow.prototype.kMODE_DISABLED
+		);
 	},
  
 	get autoHideWindow() 
@@ -302,6 +312,43 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 			this._themeManager = new TreeStyleTabThemeManager(this.window);
 		}
 		return this._themeManager;
+	},
+ 
+	getWindowValue : function TSTWindow_getWindowValue(aKey) 
+	{
+		var value = '';
+		try {
+			value = SessionStore.getWindowValue(this.window, aKey);
+		}
+		catch(e) {
+		}
+
+		return value;
+	},
+ 
+	setWindowValue : function TSTWindow_setWindowValue(aKey, aValue) 
+	{
+		if (aValue === null || aValue === undefined || aValue === '')
+			return this.deleteWindowValue(this.window, aKey);
+
+		try {
+			SessionStore.setWindowValue(this.window, aKey, String(aValue));
+		}
+		catch(e) {
+		}
+
+		return aValue;
+	},
+ 
+	deleteWindowValue : function TSTWindow_deleteWindowValue(aKey) 
+	{
+		aTab.removeAttribute(aKey);
+		try {
+			SessionStore.setWindowValue(this.window, aKey, '');
+			SessionStore.deleteWindowValue(this.window, aKey);
+		}
+		catch(e) {
+		}
 	},
   
 /* Initializing */ 
@@ -373,6 +420,8 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 
 		this.initUninstallationListener();
 
+		ContentBridge.install(w);
+
 		w.TreeStyleTabWindowHelper.onBeforeBrowserInit();
 		this.initTabBrowser(this.browser);
 		w.TreeStyleTabWindowHelper.onAfterBrowserInit();
@@ -380,9 +429,7 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 		this.processRestoredTabs();
 		this.updateTabsOnTop();
 
-		// Init autohide service only if it have to be activated.
-		if (this.isAutoHide)
-			this.onPrefChange('extensions.treestyletab.tabbar.autoHide.mode');
+		this.autoHideWindow; // initialize
 
 		this.onPrefChange('extensions.treestyletab.autoCollapseExpandSubtreeOnSelect.whileFocusMovingByShortcut');
 
@@ -490,6 +537,8 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 				w.removeEventListener('aftercustomization', this, false);
 
 				w.messageManager.removeMessageListener('SessionStore:restoreTabContentStarted', this);
+
+				ContentBridge.uninstall(w);
 
 				this.fullscreenObserver.destroy();
 				delete this.fullscreenObserver;
@@ -793,11 +842,9 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 		// when you just release accel key...
 
 		/* PUBLIC API */
-		let (event) {
-			this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END, b, true, false, data);
-			// for backward compatibility
-			this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END.replace(/^nsDOM/, ''), b, true, false, data);
-		}
+		this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END, b, true, false, data);
+		// for backward compatibility
+		this.fireCustomEvent(this.kEVENT_TYPE_TAB_FOCUS_SWITCHING_END.replace(/^nsDOM/, ''), b, true, false, data);
 
 		if (this._tabShouldBeExpandedAfterKeyReleased) {
 			let tab = this._tabShouldBeExpandedAfterKeyReleased;
@@ -931,25 +978,21 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 			width += (pos == 'left' ? delta : -delta );
 			width = this.maxTabbarWidth(width, b);
 			if (expanded || b.treeStyleTab.autoHide.expanded) {
-				this.setPrefForActiveWindow(function() {
-					utils.setTreePref('tabbar.width', width);
-				});
+				// b.treeStyleTab.tabbarWidth = width;
+				b.treeStyleTab.autoHide.expandedWidth = width;
 				if (b.treeStyleTab.autoHide.mode == b.treeStyleTab.autoHide.kMODE_SHRINK &&
 					b.treeStyleTab.tabStripPlaceHolder)
-					b.treeStyleTab.tabStripPlaceHolder.setAttribute('width', utils.getTreePref('tabbar.shrunkenWidth'));
+					b.treeStyleTab.tabStripPlaceHolder.setAttribute('width', b.treeStyleTab.autoHide.shrunkenWidth);
 			}
 			else {
-				this.setPrefForActiveWindow(function() {
-					utils.setTreePref('tabbar.shrunkenWidth', width);
-				});
+				b.treeStyleTab.autoHide.shrunkenWidth = width;
 			}
 		}
 		else {
 			let delta = aEvent.screenY - this.tabbarResizeStartY;
 			height += (pos == 'top' ? delta : -delta );
-			this.setPrefForActiveWindow(function() {
-				utils.setTreePref('tabbar.height', this.maxTabbarHeight(height, b));
-			});
+			height = this.maxTabbarHeight(height, b);
+			b.treeStyleTab.tabbarHeight = height;
 		}
 		b.treeStyleTab.updateFloatingTabbar(this.kTABBAR_UPDATE_BY_TABBAR_RESIZE);
 	},
@@ -1224,14 +1267,35 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
  
 	onBeforeBrowserAccessOpenURI : function TSTWindow_onBeforeBrowserAccessOpenURI(aOpener, aWhere, aContext) 
 	{
-		var hasOwnerTab = (
-				aOpener &&
-				this.getTabFromFrame(aOpener.top)
-			);
+		var hasOwnerTab = false;
+		var opener = null;
+		if (aOpener) {
+			if (aOpener instanceof Ci.nsIDOMWindow) {
+				opener = aOpener;
+				hasOwnerTab = this.getTabFromFrame(opener.top);
+			}
+			else if (Ci.nsIOpenURIInFrameParams &&
+					aOpener instanceof Ci.nsIOpenURIInFrameParams) {
+				// from remote contents, we have to detect its opener from the URI.
+				let referrer = aOpener.referrer;
+				if (referrer) {
+					let activeTab = this.browser.selectedTab;
+					let possibleOwners = [activeTab].concat(this.getAncestorTabs(activeTab));
+					for (let i = 0, maxi = possibleOwners.length; i < maxi; i++) {
+						let possibleOwner = possibleOwners[i];
+						if (possibleOwner.linkedBrowser.currentURI.spec != referrer)
+							continue;
+						hasOwnerTab = true;
+						opener = possibleOwner.linkedBrowser;
+						break;
+					}
+				}
+			}
+		}
 		var internalOpen = aContext != Ci.nsIBrowserDOMWindow.OPEN_EXTERNAL;
 		if ((hasOwnerTab || internalOpen) &&
 			aWhere == Ci.nsIBrowserDOMWindow.OPEN_NEWTAB)
-			this.handleNewTabFromCurrent(aOpener);
+			this.handleNewTabFromCurrent(opener);
 	},
  
 	onBeforeViewMedia : function TSTWindow_onBeforeViewMedia(aEvent, aOwner) 
@@ -1746,22 +1810,12 @@ TreeStyleTabWindow.prototype = inherit(TreeStyleTabBase, {
 		var value = prefs.getPref(aPrefName);
 		switch (aPrefName)
 		{
-			case 'extensions.treestyletab.tabbar.autoHide.mode':
-				// don't set on this time, because appearance of all tabbrowsers are not updated yet.
-				// this.autoHide.mode = utils.getTreePref('tabbar.autoHide.mode');
-			case 'extensions.treestyletab.tabbar.autoShow.accelKeyDown':
-			case 'extensions.treestyletab.tabbar.autoShow.tabSwitch':
-			case 'extensions.treestyletab.tabbar.autoShow.feedback':
-				this.autoHideWindow.updateKeyListeners(this.window);
-				break;
-
 			case 'extensions.treestyletab.tabbar.style':
 			case 'extensions.treestyletab.tabbar.position':
 				this.themeManager.set(prefs.getPref('extensions.treestyletab.tabbar.style'), this.position);
 				break;
 
 			case 'browser.ctrlTab.previews':
-				this.autoHideWindow.updateKeyListeners(this.window);
 			case 'extensions.treestyletab.autoCollapseExpandSubtreeOnSelect.whileFocusMovingByShortcut':
 			case 'extensions.treestyletab.autoCollapseExpandSubtreeOnSelect':
 				if (this.shouldListenKeyEventsForAutoExpandByFocusChange)

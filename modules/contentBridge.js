@@ -50,6 +50,14 @@ function ContentBridge(aTab, aTabBrowser)
 {
 	this.init(aTab, aTabBrowser);
 }
+
+ContentBridge.install = function CB_installScript(aWindow) {
+	aWindow.messageManager.loadFrameScript(TreeStyleTabConstants.CONTENT_SCRIPT_AUTOHIDE, true);
+};
+
+ContentBridge.uninstall = function CB_installScript(aWindow) {
+	aWindow.messageManager.sendAsyncCommand(TreeStyleTabConstants.COMMAND_SHUTDOWN);
+};
  
 ContentBridge.prototype = inherit(TreeStyleTabConstants, { 
 	mTab : null,
@@ -62,16 +70,13 @@ ContentBridge.prototype = inherit(TreeStyleTabConstants, {
 		this.handleMessage = this.handleMessage.bind(this);
 		this.checkPluginAreaExistenceResolvers = {};
 
-		var manager = this.mTab.linkedBrowser.messageManager;
-		// manager.loadFrameScript(this.CONTENT_SCRIPT, true);
-		manager.loadFrameScript(this.CONTENT_SCRIPT_AUTOHIDE, true);
+		var manager = this.mTab.ownerDocument.defaultView.messageManager;
 		manager.addMessageListener(this.MESSAGE_TYPE, this.handleMessage);
 	},
 	destroy : function CB_destroy()
 	{
-		var manager = this.mTab.linkedBrowser.messageManager;
+		var manager = this.mTab.ownerDocument.defaultView.messageManager;
 		manager.removeMessageListener(this.MESSAGE_TYPE, this.handleMessage);
-		this.sendAsyncCommand(this.COMMAND_SHUTDOWN);
 
 		delete this.mTab;
 		delete this.mTabBrowser;
@@ -97,23 +102,32 @@ ContentBridge.prototype = inherit(TreeStyleTabConstants, {
 	},
 	handleMessage : function CB_handleMessage(aMessage)
 	{
-		// dump(JSON.stringify(aMessage.json)+'\n');
+//		dump('*********************handleMessage*******************\n');
+//		dump('TARGET IS: '+aMessage.target.localName+'\n');
+//		dump(JSON.stringify(aMessage.json)+'\n');
+
+		if (aMessage.target != this.mTab.linkedBrowser)
+		  return;
+
 		switch (aMessage.json.command)
 		{
 			case this.COMMAND_REPORT_MOUSEDOWN:
-				let (fakeEvent = this.fixupEventCoordinates(aMessage.json.event)) {
+				{
+					let fakeEvent = this.fixupEventCoordinates(aMessage.json.event);
 					this.mTabBrowser.treeStyleTab.autoHide.onMouseDown(fakeEvent);
 				}
 				return;
 
 			case this.COMMAND_REPORT_MOUSEUP:
-				let (fakeEvent = this.fixupEventCoordinates(aMessage.json.event)) {
+				{
+					let fakeEvent = this.fixupEventCoordinates(aMessage.json.event);
 					this.mTabBrowser.treeStyleTab.autoHide.onMouseUp(fakeEvent);
 				}
 				return;
 
 			case this.COMMAND_REPORT_MOUSEMOVE:
-				let (fakeEvent = this.fixupEventCoordinates(aMessage.json.event)) {
+				{
+					let fakeEvent = this.fixupEventCoordinates(aMessage.json.event);
 					this.mTabBrowser.treeStyleTab.autoHide.handleMouseMove(fakeEvent);
 				}
 				return;
@@ -130,16 +144,17 @@ ContentBridge.prototype = inherit(TreeStyleTabConstants, {
 	},
 	fixupEventCoordinates : function CB_fixupEventCoordinates(aCoordinates)
 	{
-		var box = this.mTab.linkedBrowser.boxObject;
-		// On Firefox 36 and later, screenX/screenY from content frame
-		// is wrong (the position (0,0) is not the screen edge, but the
-		// edge of the frame itself), so we have to calculate correct
-		// screen coordinates manually.
+		// On Firefox 36 and later, screenX/screenY from out-of-process
+		// content frame is wrong, so we have to calculate correct
+		// screen coordinates manually via the utility method.
 		// This hack should be removed after the bug
 		// https://bugzilla.mozilla.org/show_bug.cgi?id=1075670
 		// is fixed.
-		aCoordinates.screenX = box.screenX + aCoordinates.clientX;
-		aCoordinates.screenY = box.screenY + aCoordinates.clientY;
+		if (typeof this.mTab.linkedBrowser.mapScreenCoordinatesFromContent == 'function') {
+			let fixedCoordinates = this.mTab.linkedBrowser.mapScreenCoordinatesFromContent(aCoordinates.screenX, aCoordinates.screenY);
+			aCoordinates.screenX = fixedCoordinates.x;
+			aCoordinates.screenY = fixedCoordinates.y;
+		}
 		return aCoordinates;
 	}
 }); 
